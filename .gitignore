@@ -1,0 +1,33 @@
+.env
+.env.local
+.env.*
+!.env.example
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.log
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+node_modules/
+dist/
+.vite/
+
+.vercel/
+.DS_Store
+Thumbs.db
+
+# Local/source financial exports
+org_data/
+
+# Local database or scratch files
+*.sqlite
+*.sqlite3
+*.db
+tmp/
+temp/

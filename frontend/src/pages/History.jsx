@@ -1,0 +1,99 @@
+import { useState } from 'react'
+import { Trash2 } from 'lucide-react'
+
+import { api } from '../api/client'
+import { ErrorBlock, LoadingBlock } from '../components/StateBlock'
+import { ACCOUNTS } from '../constants'
+import { maskAmount, usePrivacy } from '../context/PrivacyContext'
+import { useTrades } from '../hooks/useTrades'
+import { money, number } from '../utils/format'
+
+export default function History() {
+  const { hideAmounts } = usePrivacy()
+  const [account, setAccount] = useState('台股')
+  const [filters, setFilters] = useState({ ticker: '', start_date: '', end_date: '' })
+  const { data, error, loading, reload } = useTrades(account, filters)
+
+  async function remove(id) {
+    if (!window.confirm('確定刪除這筆交易？')) return
+    await api.deleteTrade(id)
+    reload()
+  }
+
+  return (
+    <div className="grid gap-5">
+      <header>
+        <h1 className="text-2xl font-semibold">交易紀錄</h1>
+      </header>
+
+      <section className="grid gap-3 rounded-md border border-line bg-surface p-4 sm:grid-cols-4">
+        <label className="grid gap-2 text-sm">
+          帳戶
+          <select className="rounded-md border border-line bg-[#0b1020] px-3 py-2" value={account} onChange={(e) => setAccount(e.target.value)}>
+            {ACCOUNTS.map((item) => (
+              <option key={item}>{item}</option>
+            ))}
+          </select>
+        </label>
+        <label className="grid gap-2 text-sm">
+          代號
+          <input className="rounded-md border border-line bg-[#0b1020] px-3 py-2" value={filters.ticker} onChange={(e) => setFilters((current) => ({ ...current, ticker: e.target.value.toUpperCase() }))} />
+        </label>
+        <label className="grid gap-2 text-sm">
+          起日
+          <input className="rounded-md border border-line bg-[#0b1020] px-3 py-2" type="date" value={filters.start_date} onChange={(e) => setFilters((current) => ({ ...current, start_date: e.target.value }))} />
+        </label>
+        <label className="grid gap-2 text-sm">
+          迄日
+          <input className="rounded-md border border-line bg-[#0b1020] px-3 py-2" type="date" value={filters.end_date} onChange={(e) => setFilters((current) => ({ ...current, end_date: e.target.value }))} />
+        </label>
+      </section>
+
+      {loading ? <LoadingBlock label="正在讀取交易紀錄" /> : null}
+      {error ? <ErrorBlock error={error} /> : null}
+
+      {!loading && !error ? (
+        <div className="overflow-hidden rounded-md border border-line bg-surface">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[860px] text-left text-sm">
+              <thead className="border-b border-line bg-panel text-slate-300">
+                <tr>
+                  <th className="px-4 py-3">日期</th>
+                  <th className="px-4 py-3">代號</th>
+                  <th className="px-4 py-3">買賣</th>
+                  <th className="px-4 py-3 text-right">股數</th>
+                  <th className="px-4 py-3 text-right">價格</th>
+                  <th className="px-4 py-3 text-right">手續費</th>
+                  <th className="px-4 py-3">備註</th>
+                  <th className="px-4 py-3"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {(data?.trades || []).map((trade) => {
+                  const isBuy = Number(trade.buy_qty || 0) > 0
+                  const qty = isBuy ? trade.buy_qty : trade.sell_qty
+                  return (
+                    <tr key={trade.id} className="border-b border-line/70 last:border-0">
+                      <td className="px-4 py-3">{trade.date || '--'}</td>
+                      <td className="px-4 py-3 font-medium text-white">{trade.ticker}</td>
+                      <td className="px-4 py-3">{isBuy ? '買入' : '賣出'}</td>
+                      <td className="px-4 py-3 text-right">{number(qty, 4)}</td>
+                      <td className="px-4 py-3 text-right">{hideAmounts ? '••••' : number(trade.price, 2)}</td>
+                      <td className="px-4 py-3 text-right">{hideAmounts ? maskAmount(money(trade.fee)) : money(trade.fee)}</td>
+                      <td className="px-4 py-3 text-slate-400">{trade.note}</td>
+                      <td className="px-4 py-3 text-right">
+                        <button className="rounded-md p-2 text-slate-400 hover:bg-panel hover:text-rose-300" onClick={() => remove(trade.id)}>
+                          <Trash2 size={18} />
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
