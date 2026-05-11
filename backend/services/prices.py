@@ -115,6 +115,7 @@ async def fetch_prices_batch(
     reset_state: bool = True,
     fugle_key: str = "",
     request_cache: dict[str, float | None] | None = None,
+    db_cache: dict[str, dict] | None = None,
 ) -> dict[str, float | None]:
     if reset_state:
         reset_price_status()
@@ -123,7 +124,7 @@ async def fetch_prices_batch(
     unique_tickers = sorted({ticker.strip().upper() for ticker in tickers if ticker and ticker.strip()})
     to_fetch: list[tuple[str, str]] = []
     symbol_by_ticker = {ticker: get_price_symbol(ticker, account) for ticker in unique_tickers}
-    db_cache = list_price_cache(list(symbol_by_ticker.values()))
+    db_cache = db_cache if db_cache is not None else list_price_cache(list(symbol_by_ticker.values()))
     cached_count = 0
     request_cache = request_cache if request_cache is not None else {}
 

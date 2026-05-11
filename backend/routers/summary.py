@@ -3,6 +3,7 @@ from fastapi import APIRouter, Query
 from config import get_settings
 from repositories.manual import list_cash_accounts, list_manual_values
 from repositories.manual import list_manual_investments
+from repositories.price_cache import list_price_cache
 from repositories.trades import list_trades
 from services.accounts import ACCOUNTS, EXTERNAL_ACCOUNTS, OWN_ACCOUNTS, cash_summary, enrich_account_summary, invested_key
 from services.calculator import build_holdings, summarize_account
@@ -23,10 +24,26 @@ async def get_summary(refresh_prices: bool = Query(default=False)) -> dict:
     own_account_total = 0.0
     external_account_total = 0.0
     request_price_cache: dict[str, float | None] = {}
+    all_trades = list_trades()
+    trades_by_account = {account: [] for account in ACCOUNTS}
+    for trade in all_trades:
+        account = trade.get("account")
+        if account in trades_by_account:
+            trades_by_account[account].append(trade)
+
+    tickers_by_account = {}
+    all_price_symbols = []
     for account in ACCOUNTS:
-        trades = list_trades(account)
-        base_holdings = await build_holdings(account, trades, {})
+        base_holdings = await build_holdings(account, trades_by_account[account], {})
         tickers = [holding["ticker"] for holding in base_holdings]
+        tickers_by_account[account] = tickers
+        for ticker in tickers:
+            all_price_symbols.append(f"TW:{ticker}" if account in TW_ACCOUNTS else ticker)
+    db_price_cache = list_price_cache(sorted(set(all_price_symbols)))
+
+    for account in ACCOUNTS:
+        trades = trades_by_account[account]
+        tickers = tickers_by_account[account]
         price_provider_ready = settings.fugle_ready if account in TW_ACCOUNTS else settings.finnhub_ready
         prices = (
             await fetch_prices_batch(
@@ -37,6 +54,7 @@ async def get_summary(refresh_prices: bool = Query(default=False)) -> dict:
                 reset_state=False,
                 fugle_key=settings.fugle_api_key,
                 request_cache=request_price_cache,
+                db_cache=db_price_cache,
             )
             if price_provider_ready
             else {}
