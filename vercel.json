@@ -4,7 +4,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/backend/main.py"
+      "destination": "/api/index.py"
     },
     {
       "source": "/(.*)",
@@ -12,8 +12,7 @@
     }
   ],
   "functions": {
-    "backend/main.py": {
-      "runtime": "python3.12",
+    "api/index.py": {
       "excludeFiles": "{frontend/**,org_data/**,docs/**,.venv/**,venv/**,node_modules/**,**/__pycache__/**,**/*.log}"
     }
   }
