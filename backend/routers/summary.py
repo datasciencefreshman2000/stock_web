@@ -4,6 +4,7 @@ from config import get_settings
 from repositories.manual import list_cash_accounts, list_manual_values
 from repositories.manual import list_manual_investments
 from repositories.price_cache import list_price_cache
+from repositories.summary_cache import get_summary_cache, upsert_summary_cache
 from repositories.trades import list_trades
 from services.accounts import ACCOUNTS, EXTERNAL_ACCOUNTS, OWN_ACCOUNTS, cash_summary, enrich_account_summary, invested_key
 from services.calculator import build_holdings, summarize_account
@@ -13,8 +14,7 @@ from services.prices import fetch_prices_batch, fetch_usd_rate, get_price_status
 router = APIRouter()
 
 
-@router.get("/summary")
-async def get_summary(refresh_prices: bool = Query(default=False)) -> dict:
+async def calculate_summary(refresh_prices: bool) -> dict:
     settings = get_settings()
     reset_price_status()
     usd_rate = await fetch_usd_rate(settings.finnhub_key, refresh=refresh_prices) if settings.finnhub_ready else 31.316
@@ -101,3 +101,14 @@ async def get_summary(refresh_prices: bool = Query(default=False)) -> dict:
         "external_total_assets": external_account_total + external_cash_total,
         "price_status": get_price_status(),
     }
+
+
+@router.get("/summary")
+async def get_summary(refresh_prices: bool = Query(default=False)) -> dict:
+    if not refresh_prices:
+        cached = get_summary_cache()
+        if cached:
+            return cached
+
+    summary = await calculate_summary(refresh_prices)
+    return upsert_summary_cache(summary)

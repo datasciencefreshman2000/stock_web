@@ -11,6 +11,7 @@ from repositories.manual import (
     update_cash,
     upsert_manual_value,
 )
+from repositories.summary_cache import clear_summary_cache
 
 router = APIRouter()
 
@@ -22,23 +23,31 @@ def get_manual() -> dict:
 
 @router.patch("/value")
 def patch_manual_value(update: ManualValueUpdate) -> dict:
-    return {"success": True, "value": upsert_manual_value(update.key, update.value)}
+    value = upsert_manual_value(update.key, update.value)
+    clear_summary_cache()
+    return {"success": True, "value": value}
 
 
 @router.patch("/cash/{cash_id}")
 def patch_cash(cash_id: str, update: CashUpdate) -> dict:
-    return {"success": True, "cash": update_cash(cash_id, update.amount, update.currency)}
+    cash = update_cash(cash_id, update.amount, update.currency)
+    clear_summary_cache()
+    return {"success": True, "cash": cash}
 
 
 @router.post("/cash")
 def add_cash(payload: CashCreate) -> dict:
-    return {"success": True, "cash": create_cash(payload.model_dump())}
+    cash = create_cash(payload.model_dump())
+    clear_summary_cache()
+    return {"success": True, "cash": cash}
 
 
 @router.post("/investment")
 def add_investment(payload: ManualInvestmentCreate) -> dict:
     try:
-        return {"success": True, "investment": create_manual_investment(payload.model_dump())}
+        investment = create_manual_investment(payload.model_dump())
+        clear_summary_cache()
+        return {"success": True, "investment": investment}
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -46,6 +55,8 @@ def add_investment(payload: ManualInvestmentCreate) -> dict:
 @router.patch("/investment/{investment_id}")
 def patch_investment(investment_id: str, payload: ManualInvestmentUpdate) -> dict:
     try:
-        return {"success": True, "investment": update_manual_investment(investment_id, payload.model_dump())}
+        investment = update_manual_investment(investment_id, payload.model_dump())
+        clear_summary_cache()
+        return {"success": True, "investment": investment}
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Query
 
 from models import TradeCreate
+from repositories.summary_cache import clear_summary_cache
 from repositories.trades import create_trade, delete_trade, list_trades
 from services.constants import TW_ACCOUNTS
 from services.fees import calc_tw_fee
@@ -26,10 +27,12 @@ def add_trade(trade: TradeCreate) -> dict:
         payload["fee"] = calc_tw_fee(payload["price"], qty)
     payload["total"] = payload["price"] * qty + payload["fee"] if payload.get("buy_qty") else payload["price"] * qty - payload["fee"]
     created = create_trade(payload)
+    clear_summary_cache()
     return {"success": True, "trade": created}
 
 
 @router.delete("/{trade_id}")
 def remove_trade(trade_id: str) -> dict:
     delete_trade(trade_id)
+    clear_summary_cache()
     return {"success": True}

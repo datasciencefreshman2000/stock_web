@@ -25,6 +25,7 @@ export default function Dashboard() {
     day: '2-digit',
     weekday: 'short',
   }).format(new Date())
+  const summaryTime = data?.summary_cached_at ? new Date(data.summary_cached_at).toLocaleString('zh-TW') : null
 
   if (loading) return <LoadingBlock label="正在讀取總覽資料" />
   if (error) return <ErrorBlock error={error} />
@@ -95,7 +96,10 @@ export default function Dashboard() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold">蔡加恩的金庫</h1>
-            <p className="mt-1 text-sm text-slate-400">USD/TWD {data.usd_rate}</p>
+            <p className="mt-1 text-sm text-slate-400">
+              USD/TWD {data.usd_rate}
+              {summaryTime ? ` · ${data.summary_cached ? '快取' : '更新'} ${summaryTime}` : ''}
+            </p>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-3">
             <div className="rounded-md border border-line bg-surface px-3 py-2 text-sm text-slate-300">{today}</div>
