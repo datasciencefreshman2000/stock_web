@@ -221,18 +221,21 @@ export default function Dashboard() {
 
       <PriceStatus status={data.price_status} />
 
-      {/* 摘要卡片：手機 2 欄，平板以上 3 欄 */}
+      {/* 摘要卡片：手機上「總資產」獨佔一行，下方兩格並排 */}
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <SummaryCard label="我的總資產" value={money(data.own_total_assets || data.total_assets)} />
+        <div className="col-span-2 sm:col-span-1">
+          <SummaryCard label="我的總資產" value={money(data.own_total_assets || data.total_assets)} />
+        </div>
         <SummaryCard label="投資市值" value={money(ownInvestmentTotal)} />
         <SummaryCard label="現金" value={money(ownCashTotal)} />
       </section>
 
-      {/* 圓餅圖：手機橫向滑動，桌機 3 欄 */}
+      {/* 圓餅圖：手機單張滑動 carousel，桌機 3 欄 grid */}
       <section>
-        <div className="-mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0 lg:grid lg:grid-cols-3 lg:overflow-visible lg:pb-0">
+        {/* 手機 carousel */}
+        <div className="scrollbar-hide flex snap-x snap-mandatory gap-3 overflow-x-auto pb-3 lg:hidden">
           {pieCharts.map((chart) => (
-            <div key={chart.key} className="w-[85vw] shrink-0 snap-start sm:w-[60vw] lg:w-auto">
+            <div key={chart.key} className="w-[calc(100%-2rem)] flex-none snap-start">
               <AssetPieChart
                 title={chart.title}
                 data={chart.data}
@@ -241,8 +244,23 @@ export default function Dashboard() {
               />
             </div>
           ))}
+          {/* 尾端佔位，讓最後一張圖也能 snap 到左側 */}
+          <div className="w-2 flex-none" aria-hidden="true" />
         </div>
-        <p className="mt-1.5 text-center text-xs text-slate-600 lg:hidden">← 左右滑動查看圖表 →</p>
+        <p className="mb-1 text-center text-xs text-slate-600 lg:hidden">← 左右滑動查看圖表 →</p>
+
+        {/* 桌機 grid */}
+        <div className="hidden gap-5 lg:grid lg:grid-cols-3">
+          {pieCharts.map((chart) => (
+            <AssetPieChart
+              key={chart.key}
+              title={chart.title}
+              data={chart.data}
+              onItemClick={chart.onItemClick}
+              headerAction={chart.headerAction}
+            />
+          ))}
+        </div>
       </section>
 
       {investmentDetails.length ? (
