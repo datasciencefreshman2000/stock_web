@@ -182,38 +182,32 @@ export default function Dashboard() {
     <div className="grid gap-5">
       {/* Header */}
       <header>
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="text-2xl font-semibold">蔡加恩的金庫</h1>
-            <p className="mt-1 text-xs text-slate-400 sm:text-sm">
-              {today} · USD/TWD {data.usd_rate}
-              {summaryTime ? (
-                <span className="hidden sm:inline"> · {data.summary_cached ? '快取' : '更新'} {summaryTime}</span>
-              ) : null}
-            </p>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <button
-              type="button"
-              onClick={toggleHideAmounts}
-              className="rounded-md border border-line bg-surface p-2 text-slate-300 hover:border-sky-500 hover:text-white"
-              title={hideAmounts ? '顯示金額' : '隱藏金額'}
-            >
-              {hideAmounts ? <EyeOff size={18} /> : <Eye size={18} />}
-            </button>
-            <button
-              type="button"
-              onClick={refreshNow}
-              disabled={loading}
-              className="flex items-center gap-1.5 rounded-md border border-sky-500 bg-sky-500/15 px-3 py-2 text-sm font-medium text-sky-100 disabled:opacity-60"
-            >
-              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-              <span className="hidden sm:inline">刷新股價</span>
-            </button>
-          </div>
+        <h1 className="text-2xl font-semibold">蔡加恩的金庫</h1>
+        <div className="mt-1.5 flex items-center gap-2">
+          <p className="flex-1 text-xs text-slate-400">
+            {today} · USD/TWD {data.usd_rate}
+            {summaryTime ? <span className="hidden sm:inline"> · {data.summary_cached ? '快取' : '更新'} {summaryTime}</span> : null}
+          </p>
+          <button
+            type="button"
+            onClick={toggleHideAmounts}
+            className="rounded-md border border-line bg-surface p-2 text-slate-300 hover:border-sky-500 hover:text-white"
+            title={hideAmounts ? '顯示金額' : '隱藏金額'}
+          >
+            {hideAmounts ? <EyeOff size={18} /> : <Eye size={18} />}
+          </button>
+          <button
+            type="button"
+            onClick={refreshNow}
+            disabled={loading}
+            className="flex items-center gap-1.5 rounded-md border border-sky-500 bg-sky-500/15 px-3 py-2 text-sm font-medium text-sky-100 disabled:opacity-60"
+          >
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            <span className="hidden sm:inline">刷新股價</span>
+          </button>
         </div>
         {summaryTime ? (
-          <p className="mt-1 text-xs text-slate-500 sm:hidden">
+          <p className="mt-0.5 text-xs text-slate-500 sm:hidden">
             {data.summary_cached ? '快取' : '更新'} {summaryTime}
           </p>
         ) : null}
@@ -221,13 +215,12 @@ export default function Dashboard() {
 
       <PriceStatus status={data.price_status} />
 
-      {/* 摘要卡片：手機上「總資產」獨佔一行，下方兩格並排 */}
-      <section className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <div className="col-span-2 sm:col-span-1">
-          <SummaryCard label="我的總資產" value={money(data.own_total_assets || data.total_assets)} />
-        </div>
+      {/* 摘要卡片：手機 2×2，桌機一排 4 格 */}
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <SummaryCard label="我的總資產" value={money(data.own_total_assets || data.total_assets)} />
         <SummaryCard label="投資市值" value={money(ownInvestmentTotal)} />
         <SummaryCard label="現金" value={money(ownCashTotal)} />
+        <SummaryCard label="投資用現金" value={money(investmentCashTotal)} />
       </section>
 
       {/* 圓餅圖：手機單張滑動 carousel，桌機 3 欄 grid */}
@@ -244,8 +237,8 @@ export default function Dashboard() {
               />
             </div>
           ))}
-          {/* 尾端佔位，讓最後一張圖也能 snap 到左側 */}
-          <div className="w-2 flex-none" aria-hidden="true" />
+          {/* 尾端佔位 = container 寬 - 卡片寬 = 2rem，讓最後一張也能 snap 到左側 */}
+          <div className="w-8 flex-none" aria-hidden="true" />
         </div>
         <p className="mb-1 text-center text-xs text-slate-600 lg:hidden">← 左右滑動查看圖表 →</p>
 

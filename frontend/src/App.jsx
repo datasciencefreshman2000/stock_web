@@ -13,7 +13,7 @@ export default function App() {
     <PrivacyProvider>
       <BrowserRouter>
         <div className="min-h-screen bg-[#0b1020] text-slate-100">
-          <main className="mx-auto w-full max-w-6xl px-4 pb-24 pt-6 sm:px-6">
+          <main className="mx-auto w-full max-w-6xl px-4 pb-24 pt-6">
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/holdings" element={<Holdings />} />
