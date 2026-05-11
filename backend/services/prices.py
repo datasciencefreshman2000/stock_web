@@ -9,6 +9,7 @@ from services.constants import TW_ACCOUNTS
 
 PRICE_CACHE: dict[str, dict] = {}
 RATE_CACHE: dict[str, float | str] = {}
+COMPANY_NAME_CACHE: dict[str, str] = {}
 PRICE_FETCH_STATE = {
     "in_progress": False,
     "last_started_at": None,
@@ -79,6 +80,31 @@ def fetch_fugle_price_sync(ticker: str, api_key: str) -> float | None:
 async def fetch_fugle_price(ticker: str, api_key: str) -> tuple[str, float | None]:
     price = await asyncio.to_thread(fetch_fugle_price_sync, ticker, api_key)
     return ticker, price
+
+
+def fetch_fugle_company_name_sync(ticker: str, api_key: str) -> str | None:
+    try:
+        client = RestClient(api_key=api_key)
+        info = client.stock.intraday.ticker(symbol=ticker)
+        return info.get("name") or None
+    except Exception:
+        return None
+
+
+async def fetch_fugle_company_names_batch(tickers: list[str], api_key: str) -> dict[str, str | None]:
+    semaphore = asyncio.Semaphore(5)
+
+    async def fetch_one(ticker: str) -> tuple[str, str | None]:
+        if ticker in COMPANY_NAME_CACHE:
+            return ticker, COMPANY_NAME_CACHE[ticker]
+        async with semaphore:
+            name = await asyncio.to_thread(fetch_fugle_company_name_sync, ticker, api_key)
+            if name:
+                COMPANY_NAME_CACHE[ticker] = name
+            return ticker, name
+
+    pairs = await asyncio.gather(*(fetch_one(ticker) for ticker in tickers))
+    return dict(pairs)
 
 
 async def fetch_fugle_prices_batch(tickers: list[str], api_key: str) -> dict[str, float | None]:

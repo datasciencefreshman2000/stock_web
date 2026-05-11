@@ -3,7 +3,7 @@ from collections import defaultdict
 from services.fifo import calc_fifo
 
 
-async def build_holdings(account: str, trades: list[dict], prices: dict[str, float | None]) -> list[dict]:
+async def build_holdings(account: str, trades: list[dict], prices: dict[str, float | None], company_names: dict[str, str | None] | None = None) -> list[dict]:
     by_ticker: dict[str, list[dict]] = defaultdict(list)
     for trade in trades:
         by_ticker[trade["ticker"]].append(trade)
@@ -27,6 +27,7 @@ async def build_holdings(account: str, trades: list[dict], prices: dict[str, flo
         holdings.append(
             {
                 "ticker": ticker,
+                "company_name": (company_names or {}).get(ticker),
                 "qty": result["current_qty"],
                 "avg_price": result["avg_price"],
                 "current_price": price,

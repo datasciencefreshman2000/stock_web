@@ -8,7 +8,7 @@ from repositories.trades import list_trades
 from services.accounts import cash_summary, enrich_account_summary, invested_key
 from services.calculator import build_holdings, summarize_account
 from services.constants import TW_ACCOUNTS
-from services.prices import fetch_prices_batch, fetch_usd_rate, get_price_status
+from services.prices import fetch_fugle_company_names_batch, fetch_prices_batch, fetch_usd_rate, get_price_status
 
 router = APIRouter()
 
@@ -31,7 +31,12 @@ async def get_portfolio(account: str, refresh_prices: bool = Query(default=False
         if price_provider_ready
         else {}
     )
-    holdings = await build_holdings(account, trades, prices)
+    company_names = (
+        await fetch_fugle_company_names_batch(tickers, settings.fugle_api_key)
+        if account in TW_ACCOUNTS and settings.fugle_ready
+        else {}
+    )
+    holdings = await build_holdings(account, trades, prices, company_names)
     dashboard = summarize_account(account, trades, holdings)
     usd_rate = await fetch_usd_rate(settings.finnhub_key, refresh=False) if settings.finnhub_ready else 31.316
     manual_rows = {row["key"]: float(row["value"]) for row in list_manual_values()}
