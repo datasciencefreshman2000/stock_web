@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import httpx
 from fugle_marketdata import RestClient
 
-from repositories.price_cache import list_price_cache, upsert_price_cache
+from repositories.price_cache import list_price_cache, upsert_price_cache_rows
 from services.constants import TW_ACCOUNTS
 
 PRICE_CACHE: dict[str, dict] = {}
@@ -81,6 +81,32 @@ async def fetch_fugle_price(ticker: str, api_key: str) -> tuple[str, float | Non
     return ticker, price
 
 
+async def fetch_fugle_prices_batch(tickers: list[str], api_key: str) -> dict[str, float | None]:
+    semaphore = asyncio.Semaphore(5)
+
+    async def fetch_one(ticker: str) -> tuple[str, float | None]:
+        async with semaphore:
+            return await fetch_fugle_price(ticker, api_key)
+
+    pairs = await asyncio.gather(*(fetch_one(ticker) for ticker in tickers))
+    return dict(pairs)
+
+
+async def fetch_finnhub_prices_batch(
+    client: httpx.AsyncClient,
+    pairs: list[tuple[str, str]],
+    api_key: str,
+) -> dict[str, float | None]:
+    semaphore = asyncio.Semaphore(8)
+
+    async def fetch_one(ticker: str, symbol: str) -> tuple[str, float | None]:
+        async with semaphore:
+            return await fetch_price(client, ticker, symbol, api_key)
+
+    results = await asyncio.gather(*(fetch_one(ticker, symbol) for ticker, symbol in pairs))
+    return dict(results)
+
+
 async def fetch_prices_batch(
     tickers: list[str],
     account: str,
@@ -107,9 +133,6 @@ async def fetch_prices_batch(
         if symbol in request_cache:
             results[ticker] = request_cache[symbol]
             cached_count += 1
-        elif cached and not refresh:
-            results[ticker] = cached["price"]
-            cached_count += 1
         elif db_cache.get(symbol) and not refresh:
             row = db_cache[symbol]
             price = float(row["price"]) if row.get("price") is not None else None
@@ -122,6 +145,9 @@ async def fetch_prices_batch(
                 "price": price,
                 "fetched_at": row.get("fetched_at"),
             }
+        elif cached and not refresh:
+            results[ticker] = cached["price"]
+            cached_count += 1
         elif refresh:
             to_fetch.append((ticker, symbol))
         else:
@@ -135,9 +161,11 @@ async def fetch_prices_batch(
     PRICE_FETCH_STATE["last_provider"] = "fugle" if is_tw_account(account) else "finnhub"
 
     if to_fetch:
+        cache_rows: list[dict] = []
         if is_tw_account(account):
+            fetched_prices = await fetch_fugle_prices_batch([ticker for ticker, _ in to_fetch], fugle_key)
             for ticker, symbol in to_fetch:
-                _, price = await fetch_fugle_price(ticker, fugle_key)
+                price = fetched_prices.get(ticker)
                 if price is None:
                     PRICE_FETCH_STATE["last_failed"] += 1
                     fallback = PRICE_CACHE.get(symbol) or db_cache.get(symbol)
@@ -154,7 +182,7 @@ async def fetch_prices_batch(
                         "fetched_at": fetched_at,
                     }
                     request_cache[symbol] = price
-                    upsert_price_cache(
+                    cache_rows.append(
                         {
                             "symbol": symbol,
                             "ticker": ticker,
@@ -166,11 +194,11 @@ async def fetch_prices_batch(
                         }
                     )
                     PRICE_FETCH_STATE["last_fetched"] += 1
-                await asyncio.sleep(0.1)
         else:
             async with httpx.AsyncClient() as client:
+                fetched_prices = await fetch_finnhub_prices_batch(client, to_fetch, finnhub_key)
                 for ticker, symbol in to_fetch:
-                    _, price = await fetch_price(client, ticker, symbol, finnhub_key)
+                    price = fetched_prices.get(ticker)
                     if price is None:
                         PRICE_FETCH_STATE["last_failed"] += 1
                         fallback = PRICE_CACHE.get(symbol) or db_cache.get(symbol)
@@ -187,7 +215,7 @@ async def fetch_prices_batch(
                             "fetched_at": fetched_at,
                         }
                         request_cache[symbol] = price
-                        upsert_price_cache(
+                        cache_rows.append(
                             {
                                 "symbol": symbol,
                                 "ticker": ticker,
@@ -199,7 +227,8 @@ async def fetch_prices_batch(
                             }
                         )
                         PRICE_FETCH_STATE["last_fetched"] += 1
-                    await asyncio.sleep(0.1)
+
+        upsert_price_cache_rows(cache_rows)
 
         PRICE_FETCH_STATE["in_progress"] = False
         PRICE_FETCH_STATE["last_finished_at"] = _now_iso()
