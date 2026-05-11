@@ -13,7 +13,8 @@
   ],
   "functions": {
     "backend/main.py": {
-      "runtime": "python3.11"
+      "runtime": "python3.12",
+      "excludeFiles": "{frontend/**,org_data/**,docs/**,.venv/**,venv/**,node_modules/**,**/__pycache__/**,**/*.log}"
     }
   }
 }
