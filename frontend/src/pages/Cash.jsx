@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
 
 import { api } from '../api/client'
 import AssetPieChart from '../components/AssetPieChart'
@@ -24,6 +24,7 @@ function ChartPanel({ title, data }) {
 
 function AccountInvestedPanel({ values = [], onSaved }) {
   const [drafts, setDrafts] = useState({})
+  const [open, setOpen] = useState(false)
   const map = useMemo(() => Object.fromEntries(values.map((item) => [item.key, item.value])), [values])
 
   useEffect(() => {
@@ -38,8 +39,19 @@ function AccountInvestedPanel({ values = [], onSaved }) {
 
   return (
     <section className="rounded-md border border-line bg-surface">
-      <div className="border-b border-line bg-panel px-4 py-3 text-sm font-medium">投資帳戶已投入金額</div>
-      <div className="grid gap-2 p-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="flex items-center justify-between gap-2 border-b border-line bg-panel px-4 py-3">
+        <div className="text-sm font-medium">投資帳戶已投入金額</div>
+        <button
+          type="button"
+          onClick={() => setOpen((current) => !current)}
+          className="rounded-md border border-line p-1.5 text-slate-400 sm:hidden"
+          title={open ? '收起' : '展開'}
+          aria-label={open ? '收起投資帳戶已投入金額' : '展開投資帳戶已投入金額'}
+        >
+          {open ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+        </button>
+      </div>
+      <div className={`${open ? 'grid' : 'hidden'} gap-2 p-3 sm:grid sm:grid-cols-2 lg:grid-cols-4`}>
         {ACCOUNTS.map((account) => {
           const key = `invested_${account}`
           return (
@@ -477,12 +489,18 @@ export default function Cash() {
   }
 
   function resetSelectedAccounts() {
-    grouped
+    sortedGrouped
       .filter((item) => selectedRows.has(item.name))
       .forEach((item) => {
         updateCell(item, 'TWD', '0')
         updateCell(item, 'USD', '0')
       })
+  }
+
+  function accountTotal(item) {
+    const twd = Number(cellValue(item, 'TWD') || 0)
+    const usd = Number(cellValue(item, 'USD') || 0)
+    return twd + usd * usdRate
   }
 
   const totals = grouped.reduce(
@@ -501,8 +519,19 @@ export default function Cash() {
     .filter((item) => BANK_ROWS.includes(item.name))
     .filter((item) => Number(cellValue(item, 'TWD') || 0) > 0 || Number(cellValue(item, 'USD') || 0) > 0)
     .map((item) => item.name)
+  const sortedGrouped = [...grouped].sort((a, b) => Math.abs(accountTotal(b)) - Math.abs(accountTotal(a)))
 
-  if ((manual.loading && !manual.data) || (summary.loading && !summary.data)) return <LoadingBlock label="正在讀取現金資料" />
+  if ((manual.loading && !manual.data) || (summary.loading && !summary.data)) {
+    return (
+      <div className="grid gap-5">
+        <header>
+          <h1 className="text-2xl font-semibold">現金</h1>
+          <p className="mt-1 text-sm text-slate-400">正在整理各帳戶資料</p>
+        </header>
+        <LoadingBlock label="正在讀取現金資料" />
+      </div>
+    )
+  }
   if (manual.error && !manual.data) return <ErrorBlock error={manual.error} />
   if (summary.error && !summary.data) return <ErrorBlock error={summary.error} />
 
@@ -530,7 +559,7 @@ export default function Cash() {
       <section className="grid gap-5 lg:grid-cols-[1fr_1fr]">
         <ChartPanel
           title="現金帳戶分布"
-          data={grouped
+          data={sortedGrouped
             .map((item) => {
               const twd = Number(cellValue(item, 'TWD') || 0)
               const usd = Number(cellValue(item, 'USD') || 0)
@@ -567,7 +596,7 @@ export default function Cash() {
           <div className="text-right">折合台幣</div>
         </div>
         <div className="divide-y divide-line">
-          {grouped.map((item) => {
+          {sortedGrouped.map((item) => {
             const twd = cellValue(item, 'TWD')
             const usd = cellValue(item, 'USD')
             const total = Number(twd || 0) + Number(usd || 0) * usdRate

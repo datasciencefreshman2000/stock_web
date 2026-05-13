@@ -63,6 +63,14 @@ input[type='number']::-webkit-inner-spin-button {
   animation: submit-pulse 900ms ease-in-out infinite;
 }
 
+.loading-sweep {
+  animation: loading-sweep 1.4s ease-in-out infinite;
+}
+
+.loading-orbit {
+  animation: loading-orbit 1.8s linear infinite;
+}
+
 @keyframes page-enter {
   from {
     opacity: 0;
@@ -92,6 +100,31 @@ input[type='number']::-webkit-inner-spin-button {
   }
   50% {
     box-shadow: 0 0 0 5px rgba(56, 189, 248, 0);
+  }
+}
+
+@keyframes loading-sweep {
+  0% {
+    transform: translateX(-100%);
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(100%);
+    opacity: 0.25;
+  }
+}
+
+@keyframes loading-orbit {
+  from {
+    transform: rotate(0deg);
+    box-shadow: 12px 0 0 -8px rgba(56, 189, 248, 0.85);
+  }
+  to {
+    transform: rotate(360deg);
+    box-shadow: 12px 0 0 -8px rgba(56, 189, 248, 0.85);
   }
 }
 

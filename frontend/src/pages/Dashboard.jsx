@@ -215,10 +215,10 @@ export default function Dashboard() {
 
       {/* 摘要卡片：手機 2×2，桌機一排 4 格 */}
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <SummaryCard label="我的總資產" value={money(data.own_total_assets || data.total_assets)} />
-        <SummaryCard label="投資市值" value={money(ownInvestmentTotal)} />
-        <SummaryCard label="現金" value={money(ownCashTotal)} />
-        <SummaryCard label="投資用現金" value={money(investmentCashTotal)} />
+        <SummaryCard label="我的總資產" value={money(data.own_total_assets || data.total_assets)} countTo={data.own_total_assets || data.total_assets} />
+        <SummaryCard label="投資市值" value={money(ownInvestmentTotal)} countTo={ownInvestmentTotal} />
+        <SummaryCard label="現金" value={money(ownCashTotal)} countTo={ownCashTotal} />
+        <SummaryCard label="投資用現金" value={money(investmentCashTotal)} countTo={investmentCashTotal} />
       </section>
 
       {/* 圓餅圖：手機單張滑動 carousel，桌機 3 欄 grid */}
