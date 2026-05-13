@@ -1,6 +1,5 @@
 import { useState } from 'react'
 
-import AccountCapitalPanel from '../components/AccountCapitalPanel'
 import AssetPieChart from '../components/AssetPieChart'
 import HoldingsTable from '../components/HoldingsTable'
 import ManualValueEditor from '../components/ManualValueEditor'
@@ -88,8 +87,6 @@ export default function Holdings() {
 
       {!active.loading && !active.error && !isManual ? (
         <>
-          <PriceStatus status={portfolio.data.price_status} />
-
           <section className="grid gap-3 lg:grid-cols-[1fr_0.9fr]">
             <div className="grid grid-cols-2 gap-3">
               <MiniMetric
@@ -110,9 +107,6 @@ export default function Holdings() {
                 value={`${hideAmounts ? maskAmount(money(dashboard.realized_pnl, currency)) : money(dashboard.realized_pnl, currency)} (${percent(realizedRatio)})`}
                 accent={pnlClass(dashboard.realized_pnl)}
               />
-              <div className="col-span-2">
-                <AccountCapitalPanel account={tab} manualValues={manual.data?.values || []} onSaved={manual.reload} />
-              </div>
             </div>
             <AssetPieChart title="現金與已投入金額分布" data={allocation} />
           </section>
@@ -127,6 +121,8 @@ export default function Holdings() {
               </span>
             </div>
           ) : null}
+
+          <PriceStatus status={portfolio.data.price_status} />
         </>
       ) : null}
     </div>

@@ -11,22 +11,60 @@ import { useSummary } from '../hooks/useSummary'
 import { money } from '../utils/format'
 
 const BASE_ROWS = ['新光現金', '第一現金', '郵局現金', '國泰現金', '外面欠錢 (待收款)', '緊急現金', '公司欠錢 (待收款)', '信用卡欠錢', '身上現金']
+const INCOME_SOURCES = ['宇統資訊', '陽明高中', '實驗小學', '接案']
+const OTHER_TYPES = ['外面欠錢 (待收款)', '社團欠錢', '公司欠錢', '外面欠錢 (待還款)', '緊急現金']
 const DEBOUNCE_MS = 800
 const today = new Date().toISOString().slice(0, 10)
 
 function ChartPanel({ title, data }) {
+  return <AssetPieChart title={title} data={data} />
+}
+
+function AccountInvestedPanel({ values = [], onSaved }) {
+  const [drafts, setDrafts] = useState({})
+  const map = useMemo(() => Object.fromEntries(values.map((item) => [item.key, item.value])), [values])
+
+  useEffect(() => {
+    setDrafts(Object.fromEntries(ACCOUNTS.map((account) => [`invested_${account}`, map[`invested_${account}`] ?? 0])))
+  }, [map])
+
+  async function save(account) {
+    const key = `invested_${account}`
+    await api.updateManualValue(key, Number(drafts[key] || 0))
+    onSaved?.()
+  }
+
   return (
-    <section className="grid gap-3">
-      <h2 className="text-sm font-medium text-slate-300">{title}</h2>
-      <AssetPieChart data={data} />
+    <section className="rounded-md border border-line bg-surface">
+      <div className="border-b border-line bg-panel px-4 py-3 text-sm font-medium">投資帳戶已投入金額</div>
+      <div className="grid gap-2 p-3 sm:grid-cols-2 lg:grid-cols-4">
+        {ACCOUNTS.map((account) => {
+          const key = `invested_${account}`
+          return (
+            <label key={account} className="grid gap-1 text-xs text-slate-400">
+              {account}
+              <input
+                className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm text-white outline-none focus:border-sky-500"
+                type="number"
+                value={drafts[key] ?? ''}
+                onChange={(event) => setDrafts((current) => ({ ...current, [key]: event.target.value }))}
+                onBlur={() => save(account)}
+              />
+            </label>
+          )
+        })}
+      </div>
     </section>
   )
 }
 
 function CapitalMovementPanel({ cashNames, onSaved }) {
+  const [mode, setMode] = useState('income')
   const [form, setForm] = useState({
     movement_date: today,
-    from_bucket: '收入',
+    income_source: INCOME_SOURCES[0],
+    other_type: OTHER_TYPES[0],
+    from_bucket: cashNames[0] || '',
     to_bucket: cashNames[0] || ACCOUNTS[0],
     amount: '',
     currency: 'TWD',
@@ -34,8 +72,7 @@ function CapitalMovementPanel({ cashNames, onSaved }) {
   })
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
-  const destinations = [...cashNames, ...ACCOUNTS]
-  const sources = ['收入', ...cashNames, ...ACCOUNTS]
+  const buckets = [...cashNames, ...ACCOUNTS]
 
   function update(key, value) {
     setForm((current) => ({ ...current, [key]: value }))
@@ -46,11 +83,26 @@ function CapitalMovementPanel({ cashNames, onSaved }) {
     setSaving(true)
     setMessage('')
     try {
-      await api.createCapitalMovement({
-        ...form,
-        from_bucket: form.from_bucket === '收入' ? null : form.from_bucket,
+      let payload = {
+        movement_date: form.movement_date,
+        from_bucket: null,
+        to_bucket: form.to_bucket,
         amount: Number(form.amount || 0),
-      })
+        currency: form.currency,
+        note: form.note,
+      }
+
+      if (mode === 'income') {
+        payload = { ...payload, from_bucket: null, to_bucket: form.to_bucket, note: [form.income_source, form.note].filter(Boolean).join(' - ') }
+      } else if (mode === 'transfer') {
+        payload = { ...payload, from_bucket: form.from_bucket, to_bucket: form.to_bucket }
+      } else if (mode === 'expense') {
+        payload = { ...payload, from_bucket: form.from_bucket, to_bucket: '支出' }
+      } else {
+        payload = { ...payload, from_bucket: null, to_bucket: form.other_type, note: [form.other_type, form.note].filter(Boolean).join(' - ') }
+      }
+
+      await api.createCapitalMovement(payload)
       setMessage('已記錄資金異動。')
       setForm((current) => ({ ...current, amount: '', note: '' }))
       onSaved?.()
@@ -64,23 +116,65 @@ function CapitalMovementPanel({ cashNames, onSaved }) {
   return (
     <section className="rounded-md border border-line bg-surface">
       <div className="border-b border-line bg-panel px-4 py-3 text-sm font-medium">資金異動</div>
-      <form onSubmit={submit} className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-6 lg:items-end">
+      <div className="grid grid-cols-4 gap-2 p-3">
+        {[
+          ['income', '收入'],
+          ['transfer', '調動'],
+          ['expense', '支出'],
+          ['other', '其他'],
+        ].map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setMode(key)}
+            className={`rounded-md border px-2 py-2 text-sm ${mode === key ? 'border-sky-400 bg-sky-500/15 text-white' : 'border-line bg-panel text-slate-300'}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <form onSubmit={submit} className="grid gap-3 px-3 pb-3 sm:grid-cols-2 lg:grid-cols-6 lg:items-end">
         <label className="grid gap-1 text-xs text-slate-400">
           日期
           <input className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm text-white" type="date" value={form.movement_date} onChange={(event) => update('movement_date', event.target.value)} />
         </label>
-        <label className="grid gap-1 text-xs text-slate-400">
-          來源
-          <select className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm text-white" value={form.from_bucket} onChange={(event) => update('from_bucket', event.target.value)}>
-            {sources.map((item) => <option key={item}>{item}</option>)}
-          </select>
-        </label>
-        <label className="grid gap-1 text-xs text-slate-400">
-          放到哪裡
-          <select className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm text-white" value={form.to_bucket} onChange={(event) => update('to_bucket', event.target.value)}>
-            {destinations.map((item) => <option key={item}>{item}</option>)}
-          </select>
-        </label>
+
+        {mode === 'income' ? (
+          <label className="grid gap-1 text-xs text-slate-400">
+            收入來源
+            <select className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm text-white" value={form.income_source} onChange={(event) => update('income_source', event.target.value)}>
+              {INCOME_SOURCES.map((item) => <option key={item}>{item}</option>)}
+            </select>
+          </label>
+        ) : null}
+
+        {mode === 'transfer' || mode === 'expense' ? (
+          <label className="grid gap-1 text-xs text-slate-400">
+            從哪裡
+            <select className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm text-white" value={form.from_bucket} onChange={(event) => update('from_bucket', event.target.value)}>
+              {buckets.map((item) => <option key={item}>{item}</option>)}
+            </select>
+          </label>
+        ) : null}
+
+        {mode === 'income' || mode === 'transfer' ? (
+          <label className="grid gap-1 text-xs text-slate-400">
+            放到哪裡
+            <select className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm text-white" value={form.to_bucket} onChange={(event) => update('to_bucket', event.target.value)}>
+              {buckets.map((item) => <option key={item}>{item}</option>)}
+            </select>
+          </label>
+        ) : null}
+
+        {mode === 'other' ? (
+          <label className="grid gap-1 text-xs text-slate-400">
+            類型
+            <select className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm text-white" value={form.other_type} onChange={(event) => update('other_type', event.target.value)}>
+              {OTHER_TYPES.map((item) => <option key={item}>{item}</option>)}
+            </select>
+          </label>
+        ) : null}
+
         <label className="grid gap-1 text-xs text-slate-400">
           金額
           <input className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm text-white" type="number" min="0" step="0.01" value={form.amount} onChange={(event) => update('amount', event.target.value)} required />
@@ -97,7 +191,7 @@ function CapitalMovementPanel({ cashNames, onSaved }) {
         </button>
         <label className="grid gap-1 text-xs text-slate-400 sm:col-span-2 lg:col-span-5">
           備註
-          <input className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm text-white" value={form.note} onChange={(event) => update('note', event.target.value)} placeholder="例如：薪水、轉入台股、從郵局轉到國泰" />
+          <input className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm text-white" value={form.note} onChange={(event) => update('note', event.target.value)} />
         </label>
         {message ? <div className="text-xs text-slate-400 lg:col-span-6">{message}</div> : null}
       </form>
@@ -131,7 +225,7 @@ export default function Cash() {
   const grouped = useMemo(() => {
     const map = new Map(BASE_ROWS.map((name) => [name, { name, TWD: null, USD: null }]))
     rows
-      .filter((row) => row.name !== '社團欠錢 (待收款)')
+      .filter((row) => row.name !== '社團欠錢（待收）')
       .forEach((row) => {
         if (!map.has(row.name)) map.set(row.name, { name: row.name, TWD: null, USD: null })
         const currency = row.currency || 'TWD'
@@ -172,7 +266,7 @@ export default function Cash() {
         } else {
           const response = await api.createCash({
             name: job.name,
-            account: '台股',
+            account: '',
             category: '現金',
             currency: job.currency,
             amount: job.amount,
@@ -239,7 +333,7 @@ export default function Cash() {
   const cashNames = grouped.map((item) => item.name)
 
   async function addForeign() {
-    const response = await api.createCash({ name: '新增外幣', account: '台股', category: '現金', currency: 'USD', amount: 0 })
+    const response = await api.createCash({ name: '新增外幣', account: '', category: '現金', currency: 'USD', amount: 0 })
     setDrafts((current) => ({ ...current, [response.cash.id]: response.cash }))
     manual.reload()
   }
@@ -269,9 +363,12 @@ export default function Cash() {
         <SummaryCard label="美金" value={money(totals.usd, 'USD')} />
       </section>
 
+      <AccountInvestedPanel values={manual.data?.values || []} onSaved={() => { manual.reload(); summary.reload() }} />
+      <CapitalMovementPanel cashNames={cashNames} onSaved={() => { manual.reload(); summary.reload() }} />
+
       <section className="grid gap-5 lg:grid-cols-[1fr_1fr]">
         <ChartPanel
-          title="各現金帳戶分布"
+          title="現金帳戶分布"
           data={grouped
             .map((item) => {
               const twd = Number(cellValue(item, 'TWD') || 0)
@@ -289,8 +386,6 @@ export default function Cash() {
         />
       </section>
 
-      <CapitalMovementPanel cashNames={cashNames} onSaved={() => { manual.reload(); summary.reload() }} />
-
       <section className="overflow-hidden rounded-md border border-line bg-surface">
         <div className="hidden grid-cols-[1.4fr_1fr_1fr_1fr] gap-3 border-b border-line bg-panel px-4 py-3 text-sm text-slate-300 sm:grid">
           <div>帳戶</div>
@@ -307,19 +402,19 @@ export default function Cash() {
             const usdStatus = statuses[cellKey(item, 'USD')]
             const rowStatus = [twdStatus, usdStatus].find((status) => ['saving', 'pending', 'editing', 'error'].includes(status))
             return (
-              <div key={item.name} className="grid gap-3 px-3 py-3 sm:grid-cols-[1.4fr_1fr_1fr_1fr] sm:px-4">
+              <div key={item.name} className="grid gap-2 px-3 py-3 sm:grid-cols-[1.4fr_1fr_1fr_1fr] sm:px-4">
                 <div className="font-medium text-white">{item.name}</div>
                 <input
-                  className="w-full rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm text-white outline-none focus:border-sky-500"
+                  className="w-full rounded-md border border-line bg-[#0b1020] px-3 py-1.5 text-right text-sm text-white outline-none focus:border-sky-500"
                   type={hideAmounts ? 'password' : 'number'}
                   value={twd}
-                  onChange={(e) => updateCell(item, 'TWD', e.target.value)}
+                  onChange={(event) => updateCell(item, 'TWD', event.target.value)}
                 />
                 <input
-                  className="w-full rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm text-white outline-none focus:border-sky-500"
+                  className="w-full rounded-md border border-line bg-[#0b1020] px-3 py-1.5 text-right text-sm text-white outline-none focus:border-sky-500"
                   type={hideAmounts ? 'password' : 'number'}
                   value={usd}
-                  onChange={(e) => updateCell(item, 'USD', e.target.value)}
+                  onChange={(event) => updateCell(item, 'USD', event.target.value)}
                 />
                 <div className="rounded-md bg-panel/60 px-3 py-2 text-right text-sm text-slate-300 sm:bg-transparent sm:px-0 sm:py-0">
                   {hideAmounts ? maskAmount(money(total)) : money(total)}

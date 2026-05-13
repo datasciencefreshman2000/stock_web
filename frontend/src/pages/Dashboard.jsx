@@ -213,8 +213,6 @@ export default function Dashboard() {
         ) : null}
       </header>
 
-      <PriceStatus status={data.price_status} />
-
       {/* 摘要卡片：手機 2×2，桌機一排 4 格 */}
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <SummaryCard label="我的總資產" value={money(data.own_total_assets || data.total_assets)} />
@@ -365,6 +363,8 @@ export default function Dashboard() {
           })}
         </div>
       </section>
+
+      <PriceStatus status={data.price_status} />
     </div>
   )
 }
