@@ -14,7 +14,7 @@ const ALL_COLUMNS = [
   { key: 'weight', label: '佔比' },
 ]
 
-const COMPACT_KEYS = new Set(['ticker', 'current_price', 'pnl_pct', 'market_value'])
+const MOBILE_SORT_KEYS = ['market_value', 'pnl_pct', 'current_price', 'ticker']
 
 export default function HoldingsTable({ holdings, currency = 'TWD' }) {
   const { hideAmounts } = usePrivacy()
@@ -48,23 +48,38 @@ export default function HoldingsTable({ holdings, currency = 'TWD' }) {
 
   return (
     <div className="overflow-hidden rounded-md border border-line bg-surface">
-      <div className="flex items-center justify-between border-b border-line bg-panel px-4 py-2 sm:hidden">
-        <span className="text-xs text-slate-400">持倉明細</span>
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="rounded border border-line px-2 py-1 text-xs text-slate-300 hover:border-sky-500 hover:text-white"
-        >
-          {expanded ? '收合' : '展開全部'}
-        </button>
+      <div className="border-b border-line bg-panel px-3 py-3 sm:hidden">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-xs text-slate-400">持倉排序</span>
+          <button
+            type="button"
+            onClick={() => setExpanded((value) => !value)}
+            className="rounded border border-line px-2 py-1 text-xs text-slate-300 hover:border-sky-500 hover:text-white"
+          >
+            {expanded ? '卡片' : '表格'}
+          </button>
+        </div>
+        <div className="scrollbar-hide flex gap-2 overflow-x-auto">
+          {ALL_COLUMNS.filter((column) => MOBILE_SORT_KEYS.includes(column.key)).map((column) => (
+            <button
+              key={column.key}
+              type="button"
+              onClick={() => toggleSort(column.key)}
+              className={`shrink-0 rounded-md border px-2.5 py-1.5 text-xs ${
+                sort.key === column.key ? 'border-sky-400 bg-sky-500/15 text-white' : 'border-line bg-surface text-slate-300'
+              }`}
+            >
+              {column.label}
+              {sort.key === column.key ? (sort.direction === 'desc' ? ' ↓' : ' ↑') : ''}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* 手機版：卡片式（預設），或展開後的橫向滑動表格 */}
       <div className={expanded ? 'hidden' : 'sm:hidden'}>
         <MobileCardList holdings={sortedHoldings} currency={currency} hideAmounts={hideAmounts} />
       </div>
 
-      {/* 桌機版 + 手機展開版 */}
       <div className={expanded ? 'overflow-x-auto' : 'hidden overflow-x-auto sm:block'}>
         <table className="w-full min-w-[760px] text-left text-sm">
           <thead className="border-b border-line bg-panel text-slate-300">
@@ -74,7 +89,7 @@ export default function HoldingsTable({ holdings, currency = 'TWD' }) {
                   <button
                     type="button"
                     onClick={() => toggleSort(column.key)}
-                    className={`inline-flex items-center gap-1 ${column.align === 'left' ? '' : 'justify-end'} w-full hover:text-white`}
+                    className={`inline-flex w-full items-center gap-1 ${column.align === 'left' ? '' : 'justify-end'} hover:text-white`}
                   >
                     <span>{column.label}</span>
                     <span className="text-xs text-slate-500">
@@ -114,30 +129,31 @@ function MobileCardList({ holdings, currency, hideAmounts }) {
   return (
     <div className="divide-y divide-line">
       {holdings.map((row) => (
-        <div key={row.ticker} className="px-4 py-3">
-          <div className="mb-2 flex items-start justify-between">
-            <div>
-              <span className="font-medium text-white">{row.ticker}</span>
-              {row.company_name ? <span className="ml-2 text-xs text-slate-400">{row.company_name}</span> : null}
+        <div key={row.ticker} className="px-3 py-3">
+          <div className="mb-2 flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="font-medium text-white">{row.ticker}</div>
+              {row.company_name ? <div className="truncate text-xs text-slate-400">{row.company_name}</div> : null}
             </div>
-            <div className={`text-sm font-medium ${pnlClass(row.pnl)}`}>{percent(row.pnl_pct)}</div>
+            <div className={`shrink-0 text-sm font-medium ${pnlClass(row.pnl)}`}>{percent(row.pnl_pct)}</div>
           </div>
-          <div className="grid grid-cols-3 gap-2 text-xs">
-            <div>
-              <div className="text-slate-400">現價</div>
-              <div className="text-slate-100">{hideAmounts ? '••••' : number(row.current_price, 2)}</div>
-            </div>
-            <div>
-              <div className="text-slate-400">市值</div>
-              <div className="text-slate-100">{hideAmounts ? maskAmount(money(row.market_value, currency)) : money(row.market_value, currency)}</div>
-            </div>
-            <div>
-              <div className="text-slate-400">損益</div>
-              <div className={pnlClass(row.pnl)}>{hideAmounts ? maskAmount(money(row.pnl, currency)) : money(row.pnl, currency)}</div>
-            </div>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+            <Metric label="現價" value={hideAmounts ? '••••' : number(row.current_price, 2)} />
+            <Metric label="市值" value={hideAmounts ? maskAmount(money(row.market_value, currency)) : money(row.market_value, currency)} />
+            <Metric label="損益" value={hideAmounts ? maskAmount(money(row.pnl, currency)) : money(row.pnl, currency)} accent={pnlClass(row.pnl)} />
+            <Metric label="佔比" value={percent(row.weight)} />
           </div>
         </div>
       ))}
+    </div>
+  )
+}
+
+function Metric({ label, value, accent = 'text-slate-100' }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-slate-400">{label}</div>
+      <div className={`truncate tabular-nums ${accent}`}>{value}</div>
     </div>
   )
 }

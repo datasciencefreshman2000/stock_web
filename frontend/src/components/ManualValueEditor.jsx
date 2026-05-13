@@ -74,7 +74,7 @@ export default function ManualValueEditor({ investments = [], usdRate = 31.316, 
 
   return (
     <div className="overflow-hidden rounded-md border border-line bg-surface">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-panel px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-panel px-3 py-3 sm:px-4">
         <div className="text-sm font-medium">基金與其他投資</div>
         <div className="flex gap-2">
           <select className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm" value={currency} onChange={(e) => setCurrency(e.target.value)}>
@@ -93,7 +93,7 @@ export default function ManualValueEditor({ investments = [], usdRate = 31.316, 
           const value = Number(draftValue(row, 'value') || 0)
           const pnl = value - cost
           return (
-            <div key={row.id} className="grid gap-3 px-4 py-3 lg:grid-cols-[1.1fr_0.8fr_1fr_1fr_1fr] lg:items-center">
+            <div key={row.id} className="grid gap-3 px-3 py-3 sm:px-4 lg:grid-cols-[1.1fr_0.8fr_1fr_1fr_1fr] lg:items-center">
               <input
                 className="rounded-md border border-line bg-[#0b1020] px-3 py-2 outline-none focus:border-sky-500"
                 value={drafts[row.id]?.name ?? row.name}

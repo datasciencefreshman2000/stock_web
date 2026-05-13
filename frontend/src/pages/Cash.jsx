@@ -175,8 +175,8 @@ export default function Cash() {
         </button>
       </header>
 
-      <section className="grid gap-3 sm:grid-cols-[1.4fr_1fr_1fr]">
-        <div className="rounded-md border border-line bg-surface p-5">
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-[1.4fr_1fr_1fr]">
+        <div className="col-span-2 rounded-md border border-line bg-surface p-4 sm:col-span-1 sm:p-5">
           <div className="text-sm text-slate-400">現金總金額</div>
           <div className="mt-2 text-3xl font-semibold text-white">{hideAmounts ? maskAmount(money(totals.total)) : money(totals.total)}</div>
         </div>
@@ -205,7 +205,7 @@ export default function Cash() {
       </section>
 
       <section className="overflow-hidden rounded-md border border-line bg-surface">
-        <div className="grid grid-cols-[1.4fr_1fr_1fr_1fr] gap-3 border-b border-line bg-panel px-4 py-3 text-sm text-slate-300">
+        <div className="hidden grid-cols-[1.4fr_1fr_1fr_1fr] gap-3 border-b border-line bg-panel px-4 py-3 text-sm text-slate-300 sm:grid">
           <div>帳戶</div>
           <div className="text-right">台幣</div>
           <div className="text-right">美金</div>
@@ -220,21 +220,21 @@ export default function Cash() {
             const usdStatus = statuses[cellKey(item, 'USD')]
             const rowStatus = [twdStatus, usdStatus].find((status) => ['saving', 'pending', 'editing', 'error'].includes(status))
             return (
-              <div key={item.name} className="grid grid-cols-[1.4fr_1fr_1fr_1fr] gap-3 px-4 py-3">
+              <div key={item.name} className="grid gap-3 px-3 py-3 sm:grid-cols-[1.4fr_1fr_1fr_1fr] sm:px-4">
                 <div className="font-medium text-white">{item.name}</div>
                 <input
-                  className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right outline-none focus:border-sky-500"
+                  className="w-full rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm text-white outline-none focus:border-sky-500"
                   type={hideAmounts ? 'password' : 'number'}
                   value={twd}
                   onChange={(e) => updateCell(item, 'TWD', e.target.value)}
                 />
                 <input
-                  className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right outline-none focus:border-sky-500"
+                  className="w-full rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm text-white outline-none focus:border-sky-500"
                   type={hideAmounts ? 'password' : 'number'}
                   value={usd}
                   onChange={(e) => updateCell(item, 'USD', e.target.value)}
                 />
-                <div className="text-right text-sm text-slate-300">
+                <div className="rounded-md bg-panel/60 px-3 py-2 text-right text-sm text-slate-300 sm:bg-transparent sm:px-0 sm:py-0">
                   {hideAmounts ? maskAmount(money(total)) : money(total)}
                   {rowStatus ? (
                     <div className={`text-xs ${rowStatus === 'error' ? 'text-rose-300' : 'text-slate-500'}`}>

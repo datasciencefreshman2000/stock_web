@@ -27,16 +27,16 @@ export default function AssetPieChart({ data, title = '資產分布', onItemClic
   }
 
   return (
-    <div className="rounded-md border border-line bg-surface p-4">
+    <div className="rounded-md border border-line bg-surface p-3 sm:p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="text-sm font-medium text-slate-200">{title}</div>
+        <div className="min-w-0 text-sm font-medium leading-tight text-slate-200">{title}</div>
         {headerAction}
       </div>
-      <div className="relative h-72">
+      <div className="relative h-56 sm:h-72">
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
           <div className="text-center">
             <div className="text-xs text-slate-500">合計</div>
-            <div className="text-sm font-semibold text-white">{hideAmounts ? maskAmount(money(total)) : money(total)}</div>
+            <div className="max-w-28 break-words text-sm font-semibold leading-tight text-white sm:max-w-none">{hideAmounts ? maskAmount(money(total)) : money(total)}</div>
           </div>
         </div>
         <ResponsiveContainer width="100%" height="100%">
@@ -60,22 +60,22 @@ export default function AssetPieChart({ data, title = '資產分布', onItemClic
           </PieChart>
         </ResponsiveContainer>
       </div>
-      <div className="mt-2 grid gap-2 text-sm">
+      <div className="mt-2 grid gap-2 text-xs sm:text-sm">
         {rows.map((item, index) => (
           <button
             key={item.name}
             type="button"
             onClick={() => onItemClick?.(item.name)}
-            className="grid grid-cols-[1fr_auto_auto] items-center gap-3 rounded-md px-2 py-1.5 text-left text-slate-300 hover:bg-white/5"
+            className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 rounded-md px-2 py-2 text-left text-slate-300 hover:bg-white/5"
           >
             <span className="flex min-w-0 items-center gap-2">
               <span className="h-2.5 w-2.5 rounded-sm" style={{ background: COLORS[index % COLORS.length] }} />
               <span className="truncate">{item.name}</span>
             </span>
-            <span className="tabular-nums text-slate-200">{hideAmounts ? maskAmount(money(item.value)) : money(item.value)}</span>
-            <span className="w-14 text-right tabular-nums text-slate-500">
+            <span className="text-right tabular-nums text-slate-500">
               {total > 0 ? `${((item.value / total) * 100).toFixed(1)}%` : '--'}
             </span>
+            <span className="col-span-2 truncate pl-4 tabular-nums text-slate-200 sm:col-span-1 sm:pl-4 sm:text-right">{hideAmounts ? maskAmount(money(item.value)) : money(item.value)}</span>
           </button>
         ))}
       </div>

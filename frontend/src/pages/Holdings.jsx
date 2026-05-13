@@ -44,7 +44,7 @@ export default function Holdings() {
               type="button"
               onClick={() => setRefreshToken((value) => value + 1)}
               disabled={portfolio.loading}
-              className="rounded-md border border-sky-500 bg-sky-500/15 px-4 py-2 text-sm font-medium text-sky-100 disabled:opacity-60"
+              className="rounded-md border border-sky-500 bg-sky-500/15 px-3 py-2 text-sm font-medium text-sky-100 disabled:opacity-60 sm:px-4"
             >
               刷新股價
             </button>
@@ -52,12 +52,12 @@ export default function Holdings() {
         </div>
       </header>
 
-      <div className="flex gap-2 overflow-x-auto">
+      <div className="scrollbar-hide flex gap-2 overflow-x-auto pb-1">
         {ACCOUNT_TABS.map((item) => (
           <button
             key={item}
             onClick={() => setTab(item)}
-            className={`shrink-0 rounded-md border px-4 py-2 text-sm ${
+            className={`shrink-0 rounded-md border px-3 py-2 text-sm sm:px-4 ${
               tab === item ? 'border-sky-400 bg-sky-500/15 text-white' : 'border-line bg-surface text-slate-300'
             }`}
           >
@@ -76,7 +76,7 @@ export default function Holdings() {
       {!active.loading && !active.error && !isManual ? (
         <>
           <PriceStatus status={portfolio.data.price_status} />
-          <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <section className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <SummaryCard label="總損益%" value={percent(pnlRatio)} accent={pnlClass(totalPnl)} />
             <SummaryCard label="市值" value={money(dashboard.market_value, currency)} />
             <SummaryCard label="已投入金額" value={money(accountInvested, currency)} />

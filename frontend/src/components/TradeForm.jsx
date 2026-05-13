@@ -100,14 +100,14 @@ export default function TradeForm({ onSubmit, submitting }) {
   }
 
   return (
-    <form onSubmit={submit} className="grid gap-4 rounded-md border border-line bg-surface p-4">
-      <div className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto]">
+    <form onSubmit={submit} className="grid gap-4 rounded-md border border-line bg-surface p-3 sm:p-4">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-[1fr_1fr_1fr_auto] sm:gap-3">
         {ACCOUNTS.map((account) => (
           <button
             key={account}
             type="button"
             onClick={() => update('account', account)}
-            className={`rounded-md border px-3 py-2 ${
+            className={`rounded-md border px-3 py-2 text-sm ${
               account === 'x' ? 'text-xs sm:px-2 sm:py-1.5' : ''
             } ${
               form.account === account ? 'border-sky-400 bg-sky-500/15 text-white' : 'border-line bg-panel text-slate-300'
@@ -118,7 +118,7 @@ export default function TradeForm({ onSubmit, submitting }) {
         ))}
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
         <label className="grid gap-2 text-sm">
           代號
           <input
@@ -141,7 +141,7 @@ export default function TradeForm({ onSubmit, submitting }) {
         </label>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-3 sm:gap-4">
         <label className="grid gap-2 text-sm">
           買賣
           <select className="rounded-md border border-line bg-[#0b1020] px-3 py-2" value={form.side} onChange={(e) => update('side', e.target.value)}>
@@ -195,7 +195,7 @@ export default function TradeForm({ onSubmit, submitting }) {
         <input className="rounded-md border border-line bg-[#0b1020] px-3 py-2" value={form.note} onChange={(e) => update('note', e.target.value)} />
       </label>
 
-      <div className="grid gap-2 rounded-md border border-line bg-panel p-3 text-sm text-slate-300 sm:grid-cols-3">
+      <div className="grid gap-2 rounded-md border border-line bg-panel p-3 text-xs text-slate-300 sm:grid-cols-3 sm:text-sm">
         <div>手續費：{hideAmounts ? maskAmount(money(fee)) : money(fee)}</div>
         <div>證交稅：{form.side === 'sell' ? (hideAmounts ? maskAmount(money(tax)) : money(tax)) : '--'}</div>
         <div>交易總額：{hideAmounts ? maskAmount(money(total)) : money(total)}</div>

@@ -54,7 +54,41 @@ export default function History() {
 
       {!loading && !error ? (
         <div className="overflow-hidden rounded-md border border-line bg-surface">
-          <div className="overflow-x-auto">
+          <div className="divide-y divide-line sm:hidden">
+            {(data?.trades || []).map((trade) => {
+              const isBuy = Number(trade.buy_qty || 0) > 0
+              const qty = isBuy ? trade.buy_qty : trade.sell_qty
+              return (
+                <div key={trade.id} className="px-3 py-3">
+                  <div className="mb-2 flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-medium text-white">{trade.ticker}</div>
+                      <div className="text-xs text-slate-400">{trade.date || '--'} · {isBuy ? '買入' : '賣出'}</div>
+                    </div>
+                    <button className="rounded-md p-2 text-slate-400 hover:bg-panel hover:text-rose-300" onClick={() => remove(trade.id)}>
+                      <Trash2 size={17} />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div>
+                      <div className="text-slate-400">數量</div>
+                      <div className="text-slate-100">{number(qty, 4)}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-400">價格</div>
+                      <div className="text-slate-100">{hideAmounts ? '••••' : number(trade.price, 2)}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-400">手續費</div>
+                      <div className="text-slate-100">{hideAmounts ? maskAmount(money(trade.fee)) : money(trade.fee)}</div>
+                    </div>
+                  </div>
+                  {trade.note ? <div className="mt-2 text-xs text-slate-500">{trade.note}</div> : null}
+                </div>
+              )
+            })}
+          </div>
+          <div className="hidden overflow-x-auto sm:block">
             <table className="w-full min-w-[860px] text-left text-sm">
               <thead className="border-b border-line bg-panel text-slate-300">
                 <tr>
