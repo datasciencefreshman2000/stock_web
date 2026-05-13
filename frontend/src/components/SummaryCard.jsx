@@ -12,7 +12,7 @@ export default function SummaryCard({ label, value, accent, countTo = null, curr
     if (!shouldCount) return
     const target = Number(countTo)
     const startedAt = performance.now()
-    const duration = 650
+    const duration = 1400
     let frameId
 
     function tick(now) {

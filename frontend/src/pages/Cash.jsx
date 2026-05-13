@@ -556,24 +556,52 @@ export default function Cash() {
       <AccountInvestedPanel values={manual.data?.values || []} onSaved={() => { manual.reload(); summary.reload() }} />
       <CapitalMovementPanel bankNames={bankNames} positiveBankNames={positiveBankNames} onSaved={() => { manual.reload(); summary.reload() }} />
 
-      <section className="grid gap-5 lg:grid-cols-[1fr_1fr]">
-        <ChartPanel
-          title="現金帳戶分布"
-          data={sortedGrouped
-            .map((item) => {
-              const twd = Number(cellValue(item, 'TWD') || 0)
-              const usd = Number(cellValue(item, 'USD') || 0)
-              return { name: item.name, value: twd + usd * usdRate }
-            })
-            .filter((item) => item.value > 0)}
-        />
-        <ChartPanel
-          title="幣別分布"
-          data={[
-            { name: '台幣', value: totals.twd },
-            { name: '美金', value: totals.usd * usdRate },
-          ].filter((item) => item.value > 0)}
-        />
+      <section>
+        <div className="scrollbar-hide flex snap-x snap-mandatory gap-3 overflow-x-auto pb-3 lg:hidden">
+          <div className="w-[calc(100%-2rem)] flex-none snap-start">
+            <ChartPanel
+              title="現金帳戶分布"
+              data={sortedGrouped
+                .map((item) => {
+                  const twd = Number(cellValue(item, 'TWD') || 0)
+                  const usd = Number(cellValue(item, 'USD') || 0)
+                  return { name: item.name, value: twd + usd * usdRate }
+                })
+                .filter((item) => item.value > 0)}
+            />
+          </div>
+          <div className="w-[calc(100%-2rem)] flex-none snap-start">
+            <ChartPanel
+              title="幣別分布"
+              data={[
+                { name: '台幣', value: totals.twd },
+                { name: '美金', value: totals.usd * usdRate },
+              ].filter((item) => item.value > 0)}
+            />
+          </div>
+          <div className="w-8 flex-none" aria-hidden="true" />
+        </div>
+        <p className="mb-1 text-center text-xs text-slate-600 lg:hidden">← 左右滑動查看圖表 →</p>
+
+        <div className="hidden gap-5 lg:grid lg:grid-cols-[1fr_1fr]">
+          <ChartPanel
+            title="現金帳戶分布"
+            data={sortedGrouped
+              .map((item) => {
+                const twd = Number(cellValue(item, 'TWD') || 0)
+                const usd = Number(cellValue(item, 'USD') || 0)
+                return { name: item.name, value: twd + usd * usdRate }
+              })
+              .filter((item) => item.value > 0)}
+          />
+          <ChartPanel
+            title="幣別分布"
+            data={[
+              { name: '台幣', value: totals.twd },
+              { name: '美金', value: totals.usd * usdRate },
+            ].filter((item) => item.value > 0)}
+          />
+        </div>
       </section>
 
       <section className="overflow-hidden rounded-md border border-line bg-surface">
@@ -588,12 +616,10 @@ export default function Cash() {
             歸零選取帳戶
           </button>
         </div>
-        <div className="hidden grid-cols-[2rem_minmax(8rem,1fr)_7rem_7rem_9rem] gap-3 border-b border-line bg-panel/70 px-4 py-2 text-xs text-slate-400 sm:grid">
-          <div></div>
+        <div className="hidden grid-cols-[minmax(10rem,1fr)_7rem_7rem] gap-3 border-b border-line bg-panel/70 px-4 py-2 text-xs text-slate-400 sm:grid">
           <div>帳戶</div>
           <div className="text-right">台幣</div>
           <div className="text-right">美金</div>
-          <div className="text-right">折合台幣</div>
         </div>
         <div className="divide-y divide-line">
           {sortedGrouped.map((item) => {
@@ -603,37 +629,46 @@ export default function Cash() {
             const twdStatus = statuses[cellKey(item, 'TWD')]
             const usdStatus = statuses[cellKey(item, 'USD')]
             const rowStatus = [twdStatus, usdStatus].find((status) => ['saving', 'pending', 'editing', 'error'].includes(status))
+            const selected = selectedRows.has(item.name)
             return (
-              <div key={item.name} className="grid gap-2 px-3 py-3 sm:grid-cols-[2rem_minmax(8rem,1fr)_7rem_7rem_9rem] sm:items-center sm:px-4">
-                <label className="flex items-center sm:justify-center">
-                  <input
-                    className="min-h-0"
-                    type="checkbox"
-                    checked={selectedRows.has(item.name)}
-                    onChange={() => toggleSelected(item.name)}
-                  />
-                </label>
-                <div className="font-medium text-white">{item.name}</div>
-                <input
-                  className="w-full rounded-md border border-line bg-[#0b1020] px-2 py-1.5 text-right text-sm text-white outline-none focus:border-sky-500"
-                  type={hideAmounts ? 'password' : 'number'}
-                  value={twd}
-                  onChange={(event) => updateCell(item, 'TWD', event.target.value)}
-                />
-                <input
-                  className="w-full rounded-md border border-line bg-[#0b1020] px-2 py-1.5 text-right text-sm text-white outline-none focus:border-sky-500"
-                  type={hideAmounts ? 'password' : 'number'}
-                  value={usd}
-                  onChange={(event) => updateCell(item, 'USD', event.target.value)}
-                />
-                <div className="rounded-md bg-panel/60 px-3 py-2 text-right text-sm text-slate-300 sm:bg-transparent sm:px-0 sm:py-0">
-                  {hideAmounts ? maskAmount(money(total)) : money(total)}
-                  {rowStatus ? (
-                    <div className={`text-xs ${rowStatus === 'error' ? 'text-rose-300' : 'text-slate-500'}`}>
-                      {rowStatus === 'editing' ? '編輯中' : rowStatus === 'pending' ? '等待儲存' : rowStatus === 'saving' ? '儲存中' : '儲存失敗'}
-                    </div>
-                  ) : null}
+              <div key={item.name} className={`grid gap-2 px-3 py-3 transition sm:grid-cols-[minmax(10rem,1fr)_7rem_7rem] sm:items-center sm:px-4 ${selected ? 'bg-sky-500/10' : ''}`}>
+                <button
+                  type="button"
+                  onClick={() => toggleSelected(item.name)}
+                  className={`grid min-h-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md border px-2 py-2 text-left transition ${
+                    selected ? 'border-sky-400 bg-sky-500/15' : 'border-transparent hover:border-line hover:bg-panel/60'
+                  }`}
+                >
+                  <span className="truncate font-medium text-white">{item.name}</span>
+                  <span className="shrink-0 text-right text-xs tabular-nums text-slate-300">
+                    {hideAmounts ? maskAmount(money(total)) : money(total)}
+                  </span>
+                </button>
+                <div className="grid grid-cols-2 gap-2 sm:contents">
+                  <label className="grid gap-1 text-[11px] text-slate-500 sm:block">
+                    <span className="sm:hidden">台幣</span>
+                    <input
+                      className="w-full rounded-md border border-line bg-[#0b1020] px-2 py-1.5 text-right text-sm text-white outline-none focus:border-sky-500"
+                      type={hideAmounts ? 'password' : 'number'}
+                      value={twd}
+                      onChange={(event) => updateCell(item, 'TWD', event.target.value)}
+                    />
+                  </label>
+                  <label className="grid gap-1 text-[11px] text-slate-500 sm:block">
+                    <span className="sm:hidden">美金</span>
+                    <input
+                      className="w-full rounded-md border border-line bg-[#0b1020] px-2 py-1.5 text-right text-sm text-white outline-none focus:border-sky-500"
+                      type={hideAmounts ? 'password' : 'number'}
+                      value={usd}
+                      onChange={(event) => updateCell(item, 'USD', event.target.value)}
+                    />
+                  </label>
                 </div>
+                {rowStatus ? (
+                  <div className={`text-right text-xs sm:col-span-3 ${rowStatus === 'error' ? 'text-rose-300' : 'text-slate-500'}`}>
+                    {rowStatus === 'editing' ? '編輯中' : rowStatus === 'pending' ? '等待儲存' : rowStatus === 'saving' ? '儲存中' : '儲存失敗'}
+                  </div>
+                ) : null}
               </div>
             )
           })}
