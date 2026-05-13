@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ChevronDown, ChevronUp } from 'lucide-react'
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 
 import { maskAmount, usePrivacy } from '../context/PrivacyContext'
@@ -64,15 +65,19 @@ export default function AssetPieChart({ data, title = '資產分布', onItemClic
           </PieChart>
         </ResponsiveContainer>
       </div>
-      <button
-        type="button"
-        onClick={() => setShowLegend((value) => !value)}
-        className="mt-1 w-full rounded-md border border-line px-2 py-1.5 text-xs text-slate-400 hover:border-sky-500 hover:text-white"
-      >
-        {showLegend ? '收起明細' : `顯示明細 (${rows.length})`}
-      </button>
+      <div className="mt-1 flex justify-center">
+        <button
+          type="button"
+          onClick={() => setShowLegend((value) => !value)}
+          className="rounded-md border border-line p-1.5 text-slate-400 transition hover:border-sky-500 hover:text-white"
+          title={showLegend ? '收起明細' : `顯示明細 (${rows.length})`}
+          aria-label={showLegend ? '收起明細' : `顯示明細 (${rows.length})`}
+        >
+          {showLegend ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+        </button>
+      </div>
       {showLegend ? (
-        <div className="mt-2 grid gap-1.5 text-xs">
+        <div className="page-enter mt-2 grid gap-1.5 text-xs">
           {rows.map((item, index) => (
             <button
               key={item.name}

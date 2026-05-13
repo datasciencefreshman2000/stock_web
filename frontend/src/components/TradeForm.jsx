@@ -1,3 +1,4 @@
+import { Loader2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { api } from '../api/client'
@@ -234,7 +235,11 @@ export default function TradeForm({ onSubmit, submitting }) {
         <div>交易總額：{hideAmounts ? maskAmount(money(total)) : money(total)}</div>
       </div>
 
-      <button disabled={submitting} className="rounded-md bg-sky-500 px-4 py-3 font-medium text-white disabled:opacity-60">
+      <button
+        disabled={submitting}
+        className={`flex items-center justify-center gap-2 rounded-md bg-sky-500 px-4 py-3 font-medium text-white transition active:scale-[0.99] disabled:opacity-70 ${submitting ? 'submit-pulse' : 'hover:bg-sky-400'}`}
+      >
+        {submitting ? <Loader2 size={17} className="animate-spin" /> : null}
         {submitting ? '新增中' : '新增交易'}
       </button>
     </form>

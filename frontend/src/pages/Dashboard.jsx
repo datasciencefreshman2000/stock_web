@@ -87,8 +87,8 @@ export default function Dashboard() {
   }).format(new Date())
   const summaryTime = data?.summary_cached_at ? new Date(data.summary_cached_at).toLocaleString('zh-TW') : null
 
-  if (loading) return <LoadingBlock label="正在讀取總覽資料" />
-  if (error) return <ErrorBlock error={error} />
+  if (loading && !data) return <LoadingBlock label="正在讀取總覽資料" />
+  if (error && !data) return <ErrorBlock error={error} />
 
   const accounts = data.accounts || {}
   const ownAccountNames = ['台股', '美股']
@@ -200,7 +200,7 @@ export default function Dashboard() {
             type="button"
             onClick={refreshNow}
             disabled={loading}
-            className="flex items-center gap-1.5 rounded-md border border-sky-500 bg-sky-500/15 px-3 py-2 text-sm font-medium text-sky-100 disabled:opacity-60"
+            className={`flex items-center gap-1.5 rounded-md border border-sky-500 bg-sky-500/15 px-3 py-2 text-sm font-medium text-sky-100 transition active:scale-[0.99] disabled:opacity-70 ${loading ? 'submit-pulse' : 'hover:bg-sky-500/20'}`}
           >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             <span className="hidden sm:inline">刷新股價</span>

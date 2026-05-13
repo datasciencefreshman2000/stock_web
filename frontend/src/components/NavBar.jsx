@@ -20,7 +20,7 @@ export default function NavBar() {
               key={item.to}
               to={item.to}
               className={({ isActive }) =>
-                `flex min-w-0 flex-col items-center gap-1 rounded-md leading-tight ${
+                `flex min-w-0 flex-col items-center gap-1 rounded-md leading-tight transition duration-150 active:scale-95 ${
                   item.featured ? 'px-1.5 py-2 text-xs sm:py-2.5' : 'px-1.5 py-1.5 text-[11px] sm:px-2 sm:py-2 sm:text-xs'
                 } ${isActive ? 'bg-panel text-white' : 'text-slate-400'}`
               }

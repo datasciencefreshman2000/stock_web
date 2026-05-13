@@ -29,8 +29,8 @@ export default function AddTrade() {
       <header>
         <h1 className="text-2xl font-semibold">新增交易</h1>
       </header>
-      {error ? <div className="rounded-md border border-rose-900 bg-rose-950/40 p-4 text-rose-100">{error}</div> : null}
-      {message ? <div className="rounded-md border border-emerald-900 bg-emerald-950/40 p-4 text-emerald-100">{message}</div> : null}
+      {error ? <div className="soft-pop rounded-md border border-rose-900 bg-rose-950/40 p-4 text-rose-100">{error}</div> : null}
+      {message ? <div className="soft-pop rounded-md border border-emerald-900 bg-emerald-950/40 p-4 text-emerald-100">{message}</div> : null}
       <TradeForm onSubmit={submit} submitting={submitting} />
     </div>
   )

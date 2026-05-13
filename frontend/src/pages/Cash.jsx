@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Loader2 } from 'lucide-react'
 
 import { api } from '../api/client'
 import AssetPieChart from '../components/AssetPieChart'
@@ -63,6 +64,7 @@ function IncomeSourcePicker({ value, onChange }) {
   const [sources, setSources] = useState(INCOME_SOURCES.map((label) => ({ id: null, label })))
   const [draft, setDraft] = useState('')
   const [message, setMessage] = useState('')
+  const [editing, setEditing] = useState(false)
 
   async function loadSources() {
     try {
@@ -111,37 +113,50 @@ function IncomeSourcePicker({ value, onChange }) {
 
   return (
     <div className="grid gap-2 sm:col-span-2 lg:col-span-2">
-      <label className="grid gap-1 text-xs text-slate-400">
-        收入來源
-        <select className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm text-white" value={value} onChange={(event) => onChange(event.target.value)}>
-          {sources.map((item) => <option key={item.id || item.label}>{item.label}</option>)}
-        </select>
-      </label>
-      <div className="flex gap-2">
-        <input
-          className="min-w-0 flex-1 rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm text-white"
-          placeholder="新增收入來源"
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-        />
-        <button type="button" className="rounded-md border border-sky-500 bg-sky-500/15 px-3 py-2 text-xs font-medium text-sky-100" onClick={addSource}>
-          增加
+      <div className="grid grid-cols-[1fr_auto] items-end gap-2">
+        <label className="grid gap-1 text-xs text-slate-400">
+          收入來源
+          <select className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm text-white" value={value} onChange={(event) => onChange(event.target.value)}>
+            {sources.map((item) => <option key={item.id || item.label}>{item.label}</option>)}
+          </select>
+        </label>
+        <button
+          type="button"
+          onClick={() => setEditing((current) => !current)}
+          className="rounded-md border border-line bg-panel px-3 py-2 text-xs font-medium text-slate-200"
+        >
+          更動
         </button>
       </div>
-      <div className="flex flex-wrap gap-2">
-        {sources.map((item) => (
-          <button
-            key={item.id || item.label}
-            type="button"
-            disabled={!item.id}
-            onClick={() => removeSource(item)}
-            className="rounded-full border border-line bg-panel px-2 py-1 text-xs text-slate-300 disabled:opacity-50"
-            title={item.id ? '刪除收入來源' : '預設來源需要建立資料表後才能刪除'}
-          >
-            {item.label} {item.id ? '×' : ''}
-          </button>
-        ))}
-      </div>
+      {editing ? (
+        <div className="grid gap-2 rounded-md border border-line bg-panel/50 p-2">
+          <div className="flex gap-2">
+            <input
+              className="min-w-0 flex-1 rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm text-white"
+              placeholder="新增收入來源"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+            />
+            <button type="button" className="rounded-md border border-sky-500 bg-sky-500/15 px-3 py-2 text-xs font-medium text-sky-100" onClick={addSource}>
+              增加
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {sources.map((item) => (
+              <button
+                key={item.id || item.label}
+                type="button"
+                disabled={!item.id}
+                onClick={() => removeSource(item)}
+                className="rounded-full border border-line bg-[#0b1020] px-2 py-1 text-xs text-slate-300 disabled:opacity-50"
+                title={item.id ? '刪除收入來源' : '預設來源需要建立資料表後才能刪除'}
+              >
+                {item.label} {item.id ? '×' : ''}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
       {message ? <div className="text-xs text-amber-300">{message}</div> : null}
     </div>
   )
@@ -314,7 +329,11 @@ function CapitalMovementPanel({ bankNames, positiveBankNames, onSaved }) {
             </label>
           </>
         ) : null}
-        <button className="rounded-md bg-sky-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-60" disabled={saving}>
+        <button
+          className={`flex items-center justify-center gap-2 rounded-md bg-sky-500 px-4 py-2 text-sm font-medium text-white transition active:scale-[0.99] disabled:opacity-70 lg:col-span-1 ${saving ? 'submit-pulse' : 'hover:bg-sky-400'}`}
+          disabled={saving}
+        >
+          {saving ? <Loader2 size={15} className="animate-spin" /> : null}
           {saving ? '儲存中' : '新增異動'}
         </button>
         <label className="grid gap-1 text-xs text-slate-400 sm:col-span-2 lg:col-span-5">
@@ -354,7 +373,7 @@ export default function Cash() {
   const grouped = useMemo(() => {
     const map = new Map(BASE_ROWS.map((name) => [name, { name, TWD: null, USD: null }]))
     rows
-      .filter((row) => row.name !== '社團欠錢（待收）')
+      .filter((row) => !['社團欠錢（待收）', '新增外幣'].includes(row.name))
       .forEach((row) => {
         if (!map.has(row.name)) map.set(row.name, { name: row.name, TWD: null, USD: null })
         const currency = row.currency || 'TWD'
@@ -483,15 +502,9 @@ export default function Cash() {
     .filter((item) => Number(cellValue(item, 'TWD') || 0) > 0 || Number(cellValue(item, 'USD') || 0) > 0)
     .map((item) => item.name)
 
-  async function addForeign() {
-    const response = await api.createCash({ name: '新增外幣', account: '', category: '現金', currency: 'USD', amount: 0 })
-    setDrafts((current) => ({ ...current, [response.cash.id]: response.cash }))
-    manual.reload()
-  }
-
-  if (manual.loading || summary.loading) return <LoadingBlock label="正在讀取現金資料" />
-  if (manual.error) return <ErrorBlock error={manual.error} />
-  if (summary.error) return <ErrorBlock error={summary.error} />
+  if ((manual.loading && !manual.data) || (summary.loading && !summary.data)) return <LoadingBlock label="正在讀取現金資料" />
+  if (manual.error && !manual.data) return <ErrorBlock error={manual.error} />
+  if (summary.error && !summary.data) return <ErrorBlock error={summary.error} />
 
   return (
     <div className="grid gap-5">
@@ -500,17 +513,6 @@ export default function Cash() {
           <h1 className="text-2xl font-semibold">現金</h1>
           <p className="mt-1 text-sm text-slate-400">USD/TWD {usdRate}</p>
         </div>
-        <button type="button" onClick={addForeign} className="rounded-md border border-sky-500 bg-sky-500/15 px-4 py-2 text-sm font-medium text-sky-100">
-          新增外幣
-        </button>
-        <button
-          type="button"
-          disabled={selectedRows.size === 0}
-          onClick={resetSelectedAccounts}
-          className="rounded-md border border-rose-500/70 bg-rose-500/10 px-4 py-2 text-sm font-medium text-rose-100 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          歸零選取帳戶
-        </button>
       </header>
 
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-[1.4fr_1fr_1fr]">
@@ -546,7 +548,18 @@ export default function Cash() {
       </section>
 
       <section className="overflow-hidden rounded-md border border-line bg-surface">
-        <div className="hidden grid-cols-[2rem_1.4fr_1fr_1fr_1fr] gap-3 border-b border-line bg-panel px-4 py-3 text-sm text-slate-300 sm:grid">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-panel px-4 py-3">
+          <div className="text-sm font-medium text-slate-200">帳戶</div>
+          <button
+            type="button"
+            disabled={selectedRows.size === 0}
+            onClick={resetSelectedAccounts}
+            className="rounded-md border border-rose-500/70 bg-rose-500/10 px-3 py-1.5 text-xs font-medium text-rose-100 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            歸零選取帳戶
+          </button>
+        </div>
+        <div className="hidden grid-cols-[2rem_minmax(8rem,1fr)_7rem_7rem_9rem] gap-3 border-b border-line bg-panel/70 px-4 py-2 text-xs text-slate-400 sm:grid">
           <div></div>
           <div>帳戶</div>
           <div className="text-right">台幣</div>
@@ -562,7 +575,7 @@ export default function Cash() {
             const usdStatus = statuses[cellKey(item, 'USD')]
             const rowStatus = [twdStatus, usdStatus].find((status) => ['saving', 'pending', 'editing', 'error'].includes(status))
             return (
-              <div key={item.name} className="grid gap-2 px-3 py-3 sm:grid-cols-[2rem_1.4fr_1fr_1fr_1fr] sm:px-4">
+              <div key={item.name} className="grid gap-2 px-3 py-3 sm:grid-cols-[2rem_minmax(8rem,1fr)_7rem_7rem_9rem] sm:items-center sm:px-4">
                 <label className="flex items-center sm:justify-center">
                   <input
                     className="min-h-0"
@@ -573,13 +586,13 @@ export default function Cash() {
                 </label>
                 <div className="font-medium text-white">{item.name}</div>
                 <input
-                  className="w-full rounded-md border border-line bg-[#0b1020] px-3 py-1.5 text-right text-sm text-white outline-none focus:border-sky-500"
+                  className="w-full rounded-md border border-line bg-[#0b1020] px-2 py-1.5 text-right text-sm text-white outline-none focus:border-sky-500"
                   type={hideAmounts ? 'password' : 'number'}
                   value={twd}
                   onChange={(event) => updateCell(item, 'TWD', event.target.value)}
                 />
                 <input
-                  className="w-full rounded-md border border-line bg-[#0b1020] px-3 py-1.5 text-right text-sm text-white outline-none focus:border-sky-500"
+                  className="w-full rounded-md border border-line bg-[#0b1020] px-2 py-1.5 text-right text-sm text-white outline-none focus:border-sky-500"
                   type={hideAmounts ? 'password' : 'number'}
                   value={usd}
                   onChange={(event) => updateCell(item, 'USD', event.target.value)}
