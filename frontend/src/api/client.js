@@ -47,4 +47,9 @@ export const api = {
   deleteInvestment: (id) => request(`/manual/investment/${id}`, { method: 'DELETE' }),
   getCapitalMovements: () => request('/manual/capital-movements'),
   createCapitalMovement: (data) => request('/manual/capital-movements', { method: 'POST', body: JSON.stringify(data) }),
+  getCapitalMovementOptions: (category = 'income_source') =>
+    request(`/manual/capital-movement-options?category=${encodeURIComponent(category)}`),
+  createCapitalMovementOption: (data) =>
+    request('/manual/capital-movement-options', { method: 'POST', body: JSON.stringify(data) }),
+  deleteCapitalMovementOption: (id) => request(`/manual/capital-movement-options/${id}`, { method: 'DELETE' }),
 }

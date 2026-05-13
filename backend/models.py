@@ -99,4 +99,11 @@ class CapitalMovementCreate(BaseModel):
     to_bucket: str = Field(min_length=1)
     amount: float = Field(gt=0)
     currency: str = "TWD"
+    to_amount: float | None = Field(default=None, gt=0)
+    to_currency: str | None = None
     note: str = ""
+
+
+class CapitalMovementOptionCreate(BaseModel):
+    category: str = Field(min_length=1)
+    label: str = Field(min_length=1)

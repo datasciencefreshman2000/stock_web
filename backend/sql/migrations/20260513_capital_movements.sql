@@ -5,6 +5,8 @@ create table if not exists capital_movements (
   to_bucket text not null,
   amount numeric not null check (amount > 0),
   currency text not null default 'TWD',
+  to_amount numeric,
+  to_currency text,
   note text default '',
   created_at timestamptz default now()
 );

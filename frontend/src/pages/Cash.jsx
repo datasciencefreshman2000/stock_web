@@ -11,6 +11,7 @@ import { useSummary } from '../hooks/useSummary'
 import { money } from '../utils/format'
 
 const BASE_ROWS = ['新光現金', '第一現金', '郵局現金', '國泰現金', '外面欠錢 (待收款)', '緊急現金', '公司欠錢 (待收款)', '信用卡欠錢', '身上現金']
+const BANK_ROWS = ['新光現金', '第一現金', '郵局現金', '國泰現金']
 const INCOME_SOURCES = ['宇統資訊', '陽明高中', '實驗小學', '接案']
 const OTHER_TYPES = ['外面欠錢 (待收款)', '社團欠錢', '公司欠錢', '外面欠錢 (待還款)', '緊急現金']
 const DEBOUNCE_MS = 800
@@ -58,21 +59,130 @@ function AccountInvestedPanel({ values = [], onSaved }) {
   )
 }
 
-function CapitalMovementPanel({ cashNames, onSaved }) {
+function IncomeSourcePicker({ value, onChange }) {
+  const [sources, setSources] = useState(INCOME_SOURCES.map((label) => ({ id: null, label })))
+  const [draft, setDraft] = useState('')
+  const [message, setMessage] = useState('')
+
+  async function loadSources() {
+    try {
+      const response = await api.getCapitalMovementOptions('income_source')
+      const loaded = response.options || []
+      if (loaded.length > 0) {
+        setSources(loaded)
+        if (!loaded.some((item) => item.label === value)) onChange(loaded[0].label)
+      }
+    } catch {
+      setMessage('收入來源資料表尚未建立')
+    }
+  }
+
+  useEffect(() => {
+    loadSources()
+  }, [])
+
+  async function addSource() {
+    const label = draft.trim()
+    if (!label) return
+    try {
+      const response = await api.createCapitalMovementOption({ category: 'income_source', label })
+      const option = response.option
+      setSources((current) => [...current.filter((item) => item.label !== label), option].sort((a, b) => a.label.localeCompare(b.label, 'zh-Hant')))
+      setDraft('')
+      onChange(label)
+      setMessage('')
+    } catch (err) {
+      setMessage(err.message || '新增收入來源失敗')
+    }
+  }
+
+  async function removeSource(option) {
+    if (!option.id) return
+    try {
+      await api.deleteCapitalMovementOption(option.id)
+      const next = sources.filter((item) => item.id !== option.id)
+      setSources(next)
+      if (option.label === value) onChange(next[0]?.label || '')
+      setMessage('')
+    } catch (err) {
+      setMessage(err.message || '刪除收入來源失敗')
+    }
+  }
+
+  return (
+    <div className="grid gap-2 sm:col-span-2 lg:col-span-2">
+      <label className="grid gap-1 text-xs text-slate-400">
+        收入來源
+        <select className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm text-white" value={value} onChange={(event) => onChange(event.target.value)}>
+          {sources.map((item) => <option key={item.id || item.label}>{item.label}</option>)}
+        </select>
+      </label>
+      <div className="flex gap-2">
+        <input
+          className="min-w-0 flex-1 rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm text-white"
+          placeholder="新增收入來源"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+        />
+        <button type="button" className="rounded-md border border-sky-500 bg-sky-500/15 px-3 py-2 text-xs font-medium text-sky-100" onClick={addSource}>
+          增加
+        </button>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {sources.map((item) => (
+          <button
+            key={item.id || item.label}
+            type="button"
+            disabled={!item.id}
+            onClick={() => removeSource(item)}
+            className="rounded-full border border-line bg-panel px-2 py-1 text-xs text-slate-300 disabled:opacity-50"
+            title={item.id ? '刪除收入來源' : '預設來源需要建立資料表後才能刪除'}
+          >
+            {item.label} {item.id ? '×' : ''}
+          </button>
+        ))}
+      </div>
+      {message ? <div className="text-xs text-amber-300">{message}</div> : null}
+    </div>
+  )
+}
+
+function CapitalMovementPanel({ bankNames, positiveBankNames, onSaved }) {
   const [mode, setMode] = useState('income')
+  const [exchange, setExchange] = useState(false)
   const [form, setForm] = useState({
     movement_date: today,
     income_source: INCOME_SOURCES[0],
     other_type: OTHER_TYPES[0],
-    from_bucket: cashNames[0] || '',
-    to_bucket: cashNames[0] || ACCOUNTS[0],
+    from_bucket: bankNames[0] || '',
+    to_bucket: bankNames[0] || ACCOUNTS[0],
     amount: '',
     currency: 'TWD',
+    to_amount: '',
+    to_currency: 'USD',
     note: '',
   })
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
-  const buckets = [...cashNames, ...ACCOUNTS]
+  const incomeDestinations = [...bankNames, ACCOUNTS[0]]
+  const transferBuckets = [...bankNames, ACCOUNTS[0], ACCOUNTS[1]]
+  const expenseSources = positiveBankNames
+
+  useEffect(() => {
+    const fromOptions = mode === 'expense' ? expenseSources : transferBuckets
+    const toOptions = mode === 'income' ? incomeDestinations : transferBuckets
+    setForm((current) => {
+      const next = { ...current }
+      if ((mode === 'transfer' || mode === 'expense') && !fromOptions.includes(next.from_bucket)) {
+        next.from_bucket = fromOptions[0] || ''
+      }
+      if ((mode === 'income' || mode === 'transfer') && !toOptions.includes(next.to_bucket)) {
+        next.to_bucket = toOptions[0] || ''
+      }
+      return next.from_bucket === current.from_bucket && next.to_bucket === current.to_bucket ? current : next
+    })
+    if (mode !== 'transfer') setExchange(false)
+  }, [mode, bankNames, positiveBankNames])
 
   function update(key, value) {
     setForm((current) => ({ ...current, [key]: value }))
@@ -89,6 +199,8 @@ function CapitalMovementPanel({ cashNames, onSaved }) {
         to_bucket: form.to_bucket,
         amount: Number(form.amount || 0),
         currency: form.currency,
+        to_amount: exchange && mode === 'transfer' ? Number(form.to_amount || 0) : null,
+        to_currency: exchange && mode === 'transfer' ? form.to_currency : null,
         note: form.note,
       }
 
@@ -140,19 +252,14 @@ function CapitalMovementPanel({ cashNames, onSaved }) {
         </label>
 
         {mode === 'income' ? (
-          <label className="grid gap-1 text-xs text-slate-400">
-            收入來源
-            <select className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm text-white" value={form.income_source} onChange={(event) => update('income_source', event.target.value)}>
-              {INCOME_SOURCES.map((item) => <option key={item}>{item}</option>)}
-            </select>
-          </label>
+          <IncomeSourcePicker value={form.income_source} onChange={(value) => update('income_source', value)} />
         ) : null}
 
         {mode === 'transfer' || mode === 'expense' ? (
           <label className="grid gap-1 text-xs text-slate-400">
             從哪裡
             <select className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm text-white" value={form.from_bucket} onChange={(event) => update('from_bucket', event.target.value)}>
-              {buckets.map((item) => <option key={item}>{item}</option>)}
+              {(mode === 'expense' ? expenseSources : transferBuckets).map((item) => <option key={item}>{item}</option>)}
             </select>
           </label>
         ) : null}
@@ -161,7 +268,7 @@ function CapitalMovementPanel({ cashNames, onSaved }) {
           <label className="grid gap-1 text-xs text-slate-400">
             放到哪裡
             <select className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm text-white" value={form.to_bucket} onChange={(event) => update('to_bucket', event.target.value)}>
-              {buckets.map((item) => <option key={item}>{item}</option>)}
+              {(mode === 'income' ? incomeDestinations : transferBuckets).map((item) => <option key={item}>{item}</option>)}
             </select>
           </label>
         ) : null}
@@ -179,13 +286,34 @@ function CapitalMovementPanel({ cashNames, onSaved }) {
           金額
           <input className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm text-white" type="number" min="0" step="0.01" value={form.amount} onChange={(event) => update('amount', event.target.value)} required />
         </label>
-        <label className="grid gap-1 text-xs text-slate-400">
+        <label className="grid max-w-20 gap-1 text-[11px] text-slate-500">
           幣別
-          <select className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm text-white" value={form.currency} onChange={(event) => update('currency', event.target.value)}>
+          <select className="rounded-md border border-line bg-[#0b1020] px-2 py-1.5 text-xs text-white" value={form.currency} onChange={(event) => update('currency', event.target.value)}>
             <option value="TWD">TWD</option>
             <option value="USD">USD</option>
           </select>
         </label>
+        {mode === 'transfer' ? (
+          <label className="flex items-center gap-2 rounded-md border border-line bg-panel px-3 py-2 text-xs text-slate-300">
+            <input className="min-h-0" type="checkbox" checked={exchange} onChange={(event) => setExchange(event.target.checked)} />
+            換匯
+          </label>
+        ) : null}
+        {mode === 'transfer' && exchange ? (
+          <>
+            <label className="grid gap-1 text-xs text-slate-400">
+              換成金額
+              <input className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm text-white" type="number" min="0" step="0.01" value={form.to_amount} onChange={(event) => update('to_amount', event.target.value)} required />
+            </label>
+            <label className="grid max-w-20 gap-1 text-[11px] text-slate-500">
+              換成
+              <select className="rounded-md border border-line bg-[#0b1020] px-2 py-1.5 text-xs text-white" value={form.to_currency} onChange={(event) => update('to_currency', event.target.value)}>
+                <option value="USD">USD</option>
+                <option value="TWD">TWD</option>
+              </select>
+            </label>
+          </>
+        ) : null}
         <button className="rounded-md bg-sky-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-60" disabled={saving}>
           {saving ? '儲存中' : '新增異動'}
         </button>
@@ -205,6 +333,7 @@ export default function Cash() {
   const summary = useSummary(0)
   const [drafts, setDrafts] = useState({})
   const [statuses, setStatuses] = useState({})
+  const [selectedRows, setSelectedRows] = useState(new Set())
   const timersRef = useRef({})
   const processingRef = useRef(false)
   const queueRef = useRef(new Map())
@@ -319,6 +448,24 @@ export default function Cash() {
     enqueueSave(item, currency, rawValue)
   }
 
+  function toggleSelected(name) {
+    setSelectedRows((current) => {
+      const next = new Set(current)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
+
+  function resetSelectedAccounts() {
+    grouped
+      .filter((item) => selectedRows.has(item.name))
+      .forEach((item) => {
+        updateCell(item, 'TWD', '0')
+        updateCell(item, 'USD', '0')
+      })
+  }
+
   const totals = grouped.reduce(
     (acc, item) => {
       const twd = Number(cellValue(item, 'TWD') || 0)
@@ -330,7 +477,11 @@ export default function Cash() {
     },
     { twd: 0, usd: 0, total: 0 },
   )
-  const cashNames = grouped.map((item) => item.name)
+  const bankNames = grouped.filter((item) => BANK_ROWS.includes(item.name)).map((item) => item.name)
+  const positiveBankNames = grouped
+    .filter((item) => BANK_ROWS.includes(item.name))
+    .filter((item) => Number(cellValue(item, 'TWD') || 0) > 0 || Number(cellValue(item, 'USD') || 0) > 0)
+    .map((item) => item.name)
 
   async function addForeign() {
     const response = await api.createCash({ name: '新增外幣', account: '', category: '現金', currency: 'USD', amount: 0 })
@@ -352,6 +503,14 @@ export default function Cash() {
         <button type="button" onClick={addForeign} className="rounded-md border border-sky-500 bg-sky-500/15 px-4 py-2 text-sm font-medium text-sky-100">
           新增外幣
         </button>
+        <button
+          type="button"
+          disabled={selectedRows.size === 0}
+          onClick={resetSelectedAccounts}
+          className="rounded-md border border-rose-500/70 bg-rose-500/10 px-4 py-2 text-sm font-medium text-rose-100 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          歸零選取帳戶
+        </button>
       </header>
 
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-[1.4fr_1fr_1fr]">
@@ -364,7 +523,7 @@ export default function Cash() {
       </section>
 
       <AccountInvestedPanel values={manual.data?.values || []} onSaved={() => { manual.reload(); summary.reload() }} />
-      <CapitalMovementPanel cashNames={cashNames} onSaved={() => { manual.reload(); summary.reload() }} />
+      <CapitalMovementPanel bankNames={bankNames} positiveBankNames={positiveBankNames} onSaved={() => { manual.reload(); summary.reload() }} />
 
       <section className="grid gap-5 lg:grid-cols-[1fr_1fr]">
         <ChartPanel
@@ -387,7 +546,8 @@ export default function Cash() {
       </section>
 
       <section className="overflow-hidden rounded-md border border-line bg-surface">
-        <div className="hidden grid-cols-[1.4fr_1fr_1fr_1fr] gap-3 border-b border-line bg-panel px-4 py-3 text-sm text-slate-300 sm:grid">
+        <div className="hidden grid-cols-[2rem_1.4fr_1fr_1fr_1fr] gap-3 border-b border-line bg-panel px-4 py-3 text-sm text-slate-300 sm:grid">
+          <div></div>
           <div>帳戶</div>
           <div className="text-right">台幣</div>
           <div className="text-right">美金</div>
@@ -402,7 +562,15 @@ export default function Cash() {
             const usdStatus = statuses[cellKey(item, 'USD')]
             const rowStatus = [twdStatus, usdStatus].find((status) => ['saving', 'pending', 'editing', 'error'].includes(status))
             return (
-              <div key={item.name} className="grid gap-2 px-3 py-3 sm:grid-cols-[1.4fr_1fr_1fr_1fr] sm:px-4">
+              <div key={item.name} className="grid gap-2 px-3 py-3 sm:grid-cols-[2rem_1.4fr_1fr_1fr_1fr] sm:px-4">
+                <label className="flex items-center sm:justify-center">
+                  <input
+                    className="min-h-0"
+                    type="checkbox"
+                    checked={selectedRows.has(item.name)}
+                    onChange={() => toggleSelected(item.name)}
+                  />
+                </label>
                 <div className="font-medium text-white">{item.name}</div>
                 <input
                   className="w-full rounded-md border border-line bg-[#0b1020] px-3 py-1.5 text-right text-sm text-white outline-none focus:border-sky-500"

@@ -167,3 +167,32 @@ def list_capital_movements() -> list[dict]:
 def create_capital_movement(payload: dict) -> dict:
     response = get_supabase().table("capital_movements").insert(payload).execute()
     return response.data[0] if response.data else payload
+
+
+def list_capital_movement_options(category: str) -> list[dict]:
+    try:
+        response = (
+            get_supabase()
+            .table("capital_movement_options")
+            .select("*")
+            .eq("category", category)
+            .order("label")
+            .execute()
+        )
+        return response.data or []
+    except Exception:
+        return []
+
+
+def create_capital_movement_option(payload: dict) -> dict:
+    response = (
+        get_supabase()
+        .table("capital_movement_options")
+        .upsert(payload, on_conflict="category,label")
+        .execute()
+    )
+    return response.data[0] if response.data else payload
+
+
+def delete_capital_movement_option(option_id: str) -> None:
+    get_supabase().table("capital_movement_options").delete().eq("id", option_id).execute()

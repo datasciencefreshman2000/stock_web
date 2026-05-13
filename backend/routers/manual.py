@@ -1,14 +1,17 @@
 from fastapi import APIRouter, HTTPException
 
-from models import CapitalMovementCreate, CashCreate, CashUpdate, ManualInvestmentCreate, ManualInvestmentUpdate, ManualValueUpdate
+from models import CapitalMovementCreate, CapitalMovementOptionCreate, CashCreate, CashUpdate, ManualInvestmentCreate, ManualInvestmentUpdate, ManualValueUpdate
 from repositories.manual import (
     list_cash_accounts,
     create_cash,
     create_capital_movement,
+    create_capital_movement_option,
     adjust_cash_balance,
     create_manual_investment,
+    delete_capital_movement_option,
     delete_manual_investment,
     list_capital_movements,
+    list_capital_movement_options,
     list_manual_values,
     list_manual_investments,
     update_manual_investment,
@@ -82,21 +85,41 @@ def get_capital_movements() -> dict:
     return {"movements": list_capital_movements()}
 
 
+@router.get("/capital-movement-options")
+def get_capital_movement_options(category: str = "income_source") -> dict:
+    return {"options": list_capital_movement_options(category)}
+
+
+@router.post("/capital-movement-options")
+def add_capital_movement_option(payload: CapitalMovementOptionCreate) -> dict:
+    return {"success": True, "option": create_capital_movement_option(payload.model_dump())}
+
+
+@router.delete("/capital-movement-options/{option_id}")
+def remove_capital_movement_option(option_id: str) -> dict:
+    delete_capital_movement_option(option_id)
+    return {"success": True}
+
+
 @router.post("/capital-movements")
 def add_capital_movement(payload: CapitalMovementCreate) -> dict:
-    data = payload.model_dump(mode="json")
+    data = {key: value for key, value in payload.model_dump(mode="json").items() if value is not None}
     movement = create_capital_movement(data)
     values = {row["key"]: float(row["value"]) for row in list_manual_values()}
     cash_names = {row["name"] for row in list_cash_accounts()}
+    amount = float(data["amount"])
+    to_amount = float(data.get("to_amount") or data["amount"])
+    currency = data["currency"]
+    to_currency = data.get("to_currency") or currency
     if data.get("to_bucket") in ACCOUNTS:
         key = invested_key(data["to_bucket"])
-        upsert_manual_value(key, values.get(key, 0) + float(data["amount"]))
+        upsert_manual_value(key, values.get(key, 0) + to_amount)
     elif data.get("to_bucket") in cash_names:
-        adjust_cash_balance(data["to_bucket"], data["currency"], float(data["amount"]))
+        adjust_cash_balance(data["to_bucket"], to_currency, to_amount)
     if data.get("from_bucket") in ACCOUNTS:
         key = invested_key(data["from_bucket"])
-        upsert_manual_value(key, max(values.get(key, 0) - float(data["amount"]), 0))
+        upsert_manual_value(key, max(values.get(key, 0) - amount, 0))
     elif data.get("from_bucket") in cash_names:
-        adjust_cash_balance(data["from_bucket"], data["currency"], -float(data["amount"]))
+        adjust_cash_balance(data["from_bucket"], currency, -amount)
     clear_summary_cache()
     return {"success": True, "movement": movement}
