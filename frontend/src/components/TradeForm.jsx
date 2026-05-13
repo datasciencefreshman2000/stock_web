@@ -102,9 +102,10 @@ export default function TradeForm({ onSubmit, submitting }) {
       let account = current.account
       if ((account === ACCOUNTS[0] || account === ACCOUNTS[3]) && looksLikeUsTicker(ticker)) {
         account = ACCOUNTS[1]
-        setTickerHint('看起來像美股代號，已自動切到美股。')
+        setTickerHint(`看起來像美股代號，已自動切到 ${ACCOUNTS[1]}。`)
       } else if ((account === ACCOUNTS[1] || account === ACCOUNTS[2]) && looksLikeTwTicker(ticker)) {
-        setTickerHint('這看起來像台股代號，請改選台股或 x 帳戶。')
+        account = ACCOUNTS[0]
+        setTickerHint(`看起來像台股代號，已自動切到 ${ACCOUNTS[0]}。`)
       }
       return { ...current, ticker, account }
     })

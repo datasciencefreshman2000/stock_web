@@ -4,6 +4,7 @@ import { api } from '../api/client'
 import AssetPieChart from '../components/AssetPieChart'
 import { ErrorBlock, LoadingBlock } from '../components/StateBlock'
 import SummaryCard from '../components/SummaryCard'
+import { ACCOUNTS } from '../constants'
 import { maskAmount, usePrivacy } from '../context/PrivacyContext'
 import { useManual } from '../hooks/useManual'
 import { useSummary } from '../hooks/useSummary'
@@ -11,12 +12,95 @@ import { money } from '../utils/format'
 
 const BASE_ROWS = ['新光現金', '第一現金', '郵局現金', '國泰現金', '外面欠錢 (待收款)', '緊急現金', '公司欠錢 (待收款)', '信用卡欠錢', '身上現金']
 const DEBOUNCE_MS = 800
+const today = new Date().toISOString().slice(0, 10)
 
 function ChartPanel({ title, data }) {
   return (
     <section className="grid gap-3">
       <h2 className="text-sm font-medium text-slate-300">{title}</h2>
       <AssetPieChart data={data} />
+    </section>
+  )
+}
+
+function CapitalMovementPanel({ cashNames, onSaved }) {
+  const [form, setForm] = useState({
+    movement_date: today,
+    from_bucket: '收入',
+    to_bucket: cashNames[0] || ACCOUNTS[0],
+    amount: '',
+    currency: 'TWD',
+    note: '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState('')
+  const destinations = [...cashNames, ...ACCOUNTS]
+  const sources = ['收入', ...cashNames, ...ACCOUNTS]
+
+  function update(key, value) {
+    setForm((current) => ({ ...current, [key]: value }))
+  }
+
+  async function submit(event) {
+    event.preventDefault()
+    setSaving(true)
+    setMessage('')
+    try {
+      await api.createCapitalMovement({
+        ...form,
+        from_bucket: form.from_bucket === '收入' ? null : form.from_bucket,
+        amount: Number(form.amount || 0),
+      })
+      setMessage('已記錄資金異動。')
+      setForm((current) => ({ ...current, amount: '', note: '' }))
+      onSaved?.()
+    } catch (err) {
+      setMessage(err.message || '資金異動儲存失敗')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <section className="rounded-md border border-line bg-surface">
+      <div className="border-b border-line bg-panel px-4 py-3 text-sm font-medium">資金異動</div>
+      <form onSubmit={submit} className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-6 lg:items-end">
+        <label className="grid gap-1 text-xs text-slate-400">
+          日期
+          <input className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm text-white" type="date" value={form.movement_date} onChange={(event) => update('movement_date', event.target.value)} />
+        </label>
+        <label className="grid gap-1 text-xs text-slate-400">
+          來源
+          <select className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm text-white" value={form.from_bucket} onChange={(event) => update('from_bucket', event.target.value)}>
+            {sources.map((item) => <option key={item}>{item}</option>)}
+          </select>
+        </label>
+        <label className="grid gap-1 text-xs text-slate-400">
+          放到哪裡
+          <select className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm text-white" value={form.to_bucket} onChange={(event) => update('to_bucket', event.target.value)}>
+            {destinations.map((item) => <option key={item}>{item}</option>)}
+          </select>
+        </label>
+        <label className="grid gap-1 text-xs text-slate-400">
+          金額
+          <input className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm text-white" type="number" min="0" step="0.01" value={form.amount} onChange={(event) => update('amount', event.target.value)} required />
+        </label>
+        <label className="grid gap-1 text-xs text-slate-400">
+          幣別
+          <select className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm text-white" value={form.currency} onChange={(event) => update('currency', event.target.value)}>
+            <option value="TWD">TWD</option>
+            <option value="USD">USD</option>
+          </select>
+        </label>
+        <button className="rounded-md bg-sky-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-60" disabled={saving}>
+          {saving ? '儲存中' : '新增異動'}
+        </button>
+        <label className="grid gap-1 text-xs text-slate-400 sm:col-span-2 lg:col-span-5">
+          備註
+          <input className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm text-white" value={form.note} onChange={(event) => update('note', event.target.value)} placeholder="例如：薪水、轉入台股、從郵局轉到國泰" />
+        </label>
+        {message ? <div className="text-xs text-slate-400 lg:col-span-6">{message}</div> : null}
+      </form>
     </section>
   )
 }
@@ -152,6 +236,7 @@ export default function Cash() {
     },
     { twd: 0, usd: 0, total: 0 },
   )
+  const cashNames = grouped.map((item) => item.name)
 
   async function addForeign() {
     const response = await api.createCash({ name: '新增外幣', account: '台股', category: '現金', currency: 'USD', amount: 0 })
@@ -203,6 +288,8 @@ export default function Cash() {
           ].filter((item) => item.value > 0)}
         />
       </section>
+
+      <CapitalMovementPanel cashNames={cashNames} onSaved={() => { manual.reload(); summary.reload() }} />
 
       <section className="overflow-hidden rounded-md border border-line bg-surface">
         <div className="hidden grid-cols-[1.4fr_1fr_1fr_1fr] gap-3 border-b border-line bg-panel px-4 py-3 text-sm text-slate-300 sm:grid">

@@ -5,6 +5,7 @@ from repositories.manual import (
     list_cash_accounts,
     create_cash,
     create_capital_movement,
+    adjust_cash_balance,
     create_manual_investment,
     delete_manual_investment,
     list_capital_movements,
@@ -86,11 +87,16 @@ def add_capital_movement(payload: CapitalMovementCreate) -> dict:
     data = payload.model_dump(mode="json")
     movement = create_capital_movement(data)
     values = {row["key"]: float(row["value"]) for row in list_manual_values()}
+    cash_names = {row["name"] for row in list_cash_accounts()}
     if data.get("to_bucket") in ACCOUNTS:
         key = invested_key(data["to_bucket"])
         upsert_manual_value(key, values.get(key, 0) + float(data["amount"]))
+    elif data.get("to_bucket") in cash_names:
+        adjust_cash_balance(data["to_bucket"], data["currency"], float(data["amount"]))
     if data.get("from_bucket") in ACCOUNTS:
         key = invested_key(data["from_bucket"])
         upsert_manual_value(key, max(values.get(key, 0) - float(data["amount"]), 0))
+    elif data.get("from_bucket") in cash_names:
+        adjust_cash_balance(data["from_bucket"], data["currency"], -float(data["amount"]))
     clear_summary_cache()
     return {"success": True, "movement": movement}

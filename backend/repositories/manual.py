@@ -66,6 +66,26 @@ def create_cash(payload: dict) -> dict:
     return response.data[0] if response.data else attempted_payload
 
 
+def adjust_cash_balance(name: str, currency: str, delta: float) -> dict:
+    response = (
+        get_supabase()
+        .table("cash_accounts")
+        .select("*")
+        .eq("name", name)
+        .eq("currency", currency)
+        .limit(1)
+        .execute()
+    )
+    row = response.data[0] if response.data else None
+    if row:
+        amount = float(row.get("amount") or 0) + delta
+        return update_cash(row["id"], amount, currency)
+
+    if delta <= 0:
+        return {"name": name, "currency": currency, "amount": 0}
+    return create_cash({"name": name, "account": "", "category": "現金", "currency": currency, "amount": delta})
+
+
 def list_manual_investments() -> list[dict]:
     try:
         response = get_supabase().table("manual_investments").select("*").order("name").execute()
