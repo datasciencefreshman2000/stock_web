@@ -1,3 +1,4 @@
+import { Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
 import { api } from '../api/client'
@@ -72,17 +73,28 @@ export default function ManualValueEditor({ investments = [], usdRate = 31.316, 
     }
   }
 
+  async function removeInvestment(row) {
+    if (!window.confirm(`刪除 ${row.name}？`)) return
+    setError('')
+    try {
+      await api.deleteInvestment(row.id)
+      onSaved?.()
+    } catch (err) {
+      setError(err.message || '刪除失敗')
+    }
+  }
+
   return (
     <div className="overflow-hidden rounded-md border border-line bg-surface">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-panel px-3 py-3 sm:px-4">
         <div className="text-sm font-medium">基金與其他投資</div>
         <div className="flex gap-2">
-          <select className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+          <select className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm" value={currency} onChange={(event) => setCurrency(event.target.value)}>
             <option value="TWD">TWD</option>
             <option value="USD">USD</option>
           </select>
           <button type="button" onClick={addInvestment} className="rounded-md border border-sky-500 bg-sky-500/15 px-3 py-2 text-sm text-sky-100">
-            增加標的
+            新增標的
           </button>
         </div>
       </div>
@@ -92,19 +104,30 @@ export default function ManualValueEditor({ investments = [], usdRate = 31.316, 
           const cost = Number(draftValue(row, 'cost') || 0)
           const value = Number(draftValue(row, 'value') || 0)
           const pnl = value - cost
+          const roi = cost > 0 ? pnl / cost : null
           return (
-            <div key={row.id} className="grid gap-3 px-3 py-3 sm:px-4 lg:grid-cols-[1.1fr_0.8fr_1fr_1fr_1fr] lg:items-center">
-              <input
-                className="rounded-md border border-line bg-[#0b1020] px-3 py-2 outline-none focus:border-sky-500"
-                value={drafts[row.id]?.name ?? row.name}
-                onChange={(e) => update(row, { name: e.target.value })}
-                onBlur={() => save(row)}
-              />
+            <div key={row.id} className="grid gap-3 px-3 py-3 sm:px-4 lg:grid-cols-[1.1fr_0.75fr_0.9fr_0.9fr_1fr_auto] lg:items-center">
+              <div className="grid grid-cols-[1fr_auto] gap-2 lg:block">
+                <input
+                  className="min-w-0 rounded-md border border-line bg-[#0b1020] px-3 py-2 outline-none focus:border-sky-500"
+                  value={drafts[row.id]?.name ?? row.name}
+                  onChange={(event) => update(row, { name: event.target.value })}
+                  onBlur={() => save(row)}
+                />
+                <button
+                  type="button"
+                  onClick={() => removeInvestment(row)}
+                  className="rounded-md border border-line px-3 text-slate-400 hover:border-rose-500 hover:text-rose-300 lg:hidden"
+                  title="刪除"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
               <select
                 className="rounded-md border border-line bg-[#0b1020] px-3 py-2"
                 value={drafts[row.id]?.asset_type ?? row.asset_type}
-                onChange={(e) => {
-                  const asset_type = e.target.value
+                onChange={(event) => {
+                  const asset_type = event.target.value
                   update(row, { asset_type })
                   save(row, { asset_type })
                 }}
@@ -113,24 +136,38 @@ export default function ManualValueEditor({ investments = [], usdRate = 31.316, 
                 <option value="美股">美股</option>
                 <option value="其他">其他</option>
               </select>
-              <input
-                className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right outline-none focus:border-sky-500"
-                type={hideAmounts ? 'password' : 'number'}
-                value={drafts[row.id]?.cost ?? display(row.cost)}
-                onChange={(e) => update(row, { cost: e.target.value })}
-                onBlur={() => save(row)}
-              />
-              <input
-                className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right outline-none focus:border-sky-500"
-                type={hideAmounts ? 'password' : 'number'}
-                value={drafts[row.id]?.value ?? display(row.value)}
-                onChange={(e) => update(row, { value: e.target.value })}
-                onBlur={() => save(row)}
-              />
-              <div className={`text-right text-sm ${pnlClass(pnl)}`}>
-                {hideAmounts ? (cost > 0 ? percent(pnl / cost) : '--') : `${money(pnl, currency)} / ${cost > 0 ? percent(pnl / cost) : '--'}`}
+              <label className="grid gap-1 text-xs text-slate-400 lg:block">
+                <span className="lg:hidden">成本</span>
+                <input
+                  className="w-full rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm text-white outline-none focus:border-sky-500"
+                  type={hideAmounts ? 'password' : 'number'}
+                  value={drafts[row.id]?.cost ?? display(row.cost)}
+                  onChange={(event) => update(row, { cost: event.target.value })}
+                  onBlur={() => save(row)}
+                />
+              </label>
+              <label className="grid gap-1 text-xs text-slate-400 lg:block">
+                <span className="lg:hidden">現值</span>
+                <input
+                  className="w-full rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm text-white outline-none focus:border-sky-500"
+                  type={hideAmounts ? 'password' : 'number'}
+                  value={drafts[row.id]?.value ?? display(row.value)}
+                  onChange={(event) => update(row, { value: event.target.value })}
+                  onBlur={() => save(row)}
+                />
+              </label>
+              <div className={`rounded-md bg-panel/60 px-3 py-2 text-right text-sm lg:bg-transparent lg:px-0 ${pnlClass(pnl)}`}>
+                {hideAmounts ? percent(roi) : `${money(pnl, currency)} / ${percent(roi)}`}
                 {saving === row.id ? <span className="ml-2 text-slate-400">儲存中</span> : null}
               </div>
+              <button
+                type="button"
+                onClick={() => removeInvestment(row)}
+                className="hidden rounded-md p-2 text-slate-400 hover:bg-panel hover:text-rose-300 lg:block"
+                title="刪除"
+              >
+                <Trash2 size={17} />
+              </button>
             </div>
           )
         })}

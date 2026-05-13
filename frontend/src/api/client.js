@@ -44,4 +44,7 @@ export const api = {
   createInvestment: (data) => request('/manual/investment', { method: 'POST', body: JSON.stringify(data) }),
   updateInvestment: (id, data) =>
     request(`/manual/investment/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteInvestment: (id) => request(`/manual/investment/${id}`, { method: 'DELETE' }),
+  getCapitalMovements: () => request('/manual/capital-movements'),
+  createCapitalMovement: (data) => request('/manual/capital-movements', { method: 'POST', body: JSON.stringify(data) }),
 }

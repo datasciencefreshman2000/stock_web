@@ -1,10 +1,13 @@
 from fastapi import APIRouter, HTTPException
 
-from models import CashCreate, CashUpdate, ManualInvestmentCreate, ManualInvestmentUpdate, ManualValueUpdate
+from models import CapitalMovementCreate, CashCreate, CashUpdate, ManualInvestmentCreate, ManualInvestmentUpdate, ManualValueUpdate
 from repositories.manual import (
     list_cash_accounts,
     create_cash,
+    create_capital_movement,
     create_manual_investment,
+    delete_manual_investment,
+    list_capital_movements,
     list_manual_values,
     list_manual_investments,
     update_manual_investment,
@@ -12,6 +15,7 @@ from repositories.manual import (
     upsert_manual_value,
 )
 from repositories.summary_cache import clear_summary_cache
+from services.accounts import ACCOUNTS, invested_key
 
 router = APIRouter()
 
@@ -60,3 +64,33 @@ def patch_investment(investment_id: str, payload: ManualInvestmentUpdate) -> dic
         return {"success": True, "investment": investment}
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.delete("/investment/{investment_id}")
+def remove_investment(investment_id: str) -> dict:
+    try:
+        delete_manual_investment(investment_id)
+        clear_summary_cache()
+        return {"success": True}
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get("/capital-movements")
+def get_capital_movements() -> dict:
+    return {"movements": list_capital_movements()}
+
+
+@router.post("/capital-movements")
+def add_capital_movement(payload: CapitalMovementCreate) -> dict:
+    data = payload.model_dump(mode="json")
+    movement = create_capital_movement(data)
+    values = {row["key"]: float(row["value"]) for row in list_manual_values()}
+    if data.get("to_bucket") in ACCOUNTS:
+        key = invested_key(data["to_bucket"])
+        upsert_manual_value(key, values.get(key, 0) + float(data["amount"]))
+    if data.get("from_bucket") in ACCOUNTS:
+        key = invested_key(data["from_bucket"])
+        upsert_manual_value(key, max(values.get(key, 0) - float(data["amount"]), 0))
+    clear_summary_cache()
+    return {"success": True, "movement": movement}

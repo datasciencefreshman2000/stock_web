@@ -2,17 +2,13 @@ from __future__ import annotations
 
 from datetime import date as Date
 from datetime import datetime
-from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
 
-Account = Literal["台股", "美股", "爸媽美股", "x"]
-
-
 class Trade(BaseModel):
     id: str | None = None
-    account: Account
+    account: str
     ticker: str
     date: Date | None = None
     buy_qty: float | None = None
@@ -25,7 +21,7 @@ class Trade(BaseModel):
 
 
 class TradeCreate(BaseModel):
-    account: Account
+    account: str
     ticker: str = Field(min_length=1)
     date: Date
     buy_qty: float | None = None
@@ -75,7 +71,7 @@ class CashUpdate(BaseModel):
 
 class CashCreate(BaseModel):
     name: str = Field(min_length=1)
-    account: str = "台股"
+    account: str = ""
     category: str = "現金"
     currency: str = "USD"
     amount: float = 0
@@ -83,7 +79,7 @@ class CashCreate(BaseModel):
 
 class ManualInvestmentCreate(BaseModel):
     name: str = Field(min_length=1)
-    asset_type: Literal["台股", "美股", "其他"] = "其他"
+    asset_type: str = "其他"
     cost: float = Field(ge=0)
     value: float = Field(ge=0)
     currency: str = "TWD"
@@ -91,7 +87,16 @@ class ManualInvestmentCreate(BaseModel):
 
 class ManualInvestmentUpdate(BaseModel):
     name: str | None = None
-    asset_type: Literal["台股", "美股", "其他"] | None = None
+    asset_type: str | None = None
     cost: float | None = Field(default=None, ge=0)
     value: float | None = Field(default=None, ge=0)
     currency: str | None = None
+
+
+class CapitalMovementCreate(BaseModel):
+    movement_date: Date
+    from_bucket: str | None = None
+    to_bucket: str = Field(min_length=1)
+    amount: float = Field(gt=0)
+    currency: str = "TWD"
+    note: str = ""

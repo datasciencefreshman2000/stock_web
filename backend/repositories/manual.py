@@ -125,3 +125,25 @@ def update_manual_investment(investment_id: str, payload: dict) -> dict:
             raise RuntimeError(MANUAL_INVESTMENTS_MISSING) from exc
         raise
     return response.data[0] if response.data else {"id": investment_id, **clean}
+
+
+def delete_manual_investment(investment_id: str) -> None:
+    try:
+        get_supabase().table("manual_investments").delete().eq("id", investment_id).execute()
+    except Exception as exc:
+        if is_missing_manual_investments_error(exc):
+            raise RuntimeError(MANUAL_INVESTMENTS_MISSING) from exc
+        raise
+
+
+def list_capital_movements() -> list[dict]:
+    try:
+        response = get_supabase().table("capital_movements").select("*").order("movement_date", desc=True).execute()
+        return response.data or []
+    except Exception:
+        return []
+
+
+def create_capital_movement(payload: dict) -> dict:
+    response = get_supabase().table("capital_movements").insert(payload).execute()
+    return response.data[0] if response.data else payload

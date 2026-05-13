@@ -20,22 +20,34 @@ function estimateCathayUsFee(price, qty) {
   return Number(price || 0) * Number(qty || 0) * 0.001
 }
 
+function looksLikeTwTicker(ticker) {
+  return /^[0-9]{4,6}[A-Z]{0,2}$/.test(ticker)
+}
+
+function looksLikeUsTicker(ticker) {
+  return /^[A-Z.]{1,6}$/.test(ticker)
+}
+
+const initialForm = {
+  account: ACCOUNTS[0],
+  ticker: '',
+  side: 'buy',
+  qty: '',
+  price: '',
+  date: today,
+  fee: '',
+  note: '',
+}
+
 export default function TradeForm({ onSubmit, submitting }) {
   const { hideAmounts } = usePrivacy()
-  const [form, setForm] = useState({
-    account: '台股',
-    ticker: '',
-    side: 'buy',
-    qty: '',
-    price: '',
-    date: today,
-    fee: '',
-    note: '',
-  })
+  const [form, setForm] = useState(initialForm)
   const [tickers, setTickers] = useState([])
   const [tickerLoading, setTickerLoading] = useState(false)
+  const [tickerHint, setTickerHint] = useState('')
 
-  const isTw = form.account === '台股' || form.account === 'x'
+  const isTw = form.account === ACCOUNTS[0] || form.account === ACCOUNTS[3]
+  const isUs = form.account === ACCOUNTS[1] || form.account === ACCOUNTS[2]
   const cathayUsFee = useMemo(() => estimateCathayUsFee(form.price, form.qty), [form.price, form.qty])
   const fee = useMemo(() => (isTw ? estimateTwFee(form.price, form.qty) : Number(form.fee || 0)), [form, isTw])
   const tax = useMemo(
@@ -83,7 +95,22 @@ export default function TradeForm({ onSubmit, submitting }) {
     setForm((current) => ({ ...current, [key]: value }))
   }
 
-  function submit(event) {
+  function updateTicker(value) {
+    const ticker = value.toUpperCase().trim()
+    setTickerHint('')
+    setForm((current) => {
+      let account = current.account
+      if ((account === ACCOUNTS[0] || account === ACCOUNTS[3]) && looksLikeUsTicker(ticker)) {
+        account = ACCOUNTS[1]
+        setTickerHint('看起來像美股代號，已自動切到美股。')
+      } else if ((account === ACCOUNTS[1] || account === ACCOUNTS[2]) && looksLikeTwTicker(ticker)) {
+        setTickerHint('這看起來像台股代號，請改選台股或 x 帳戶。')
+      }
+      return { ...current, ticker, account }
+    })
+  }
+
+  async function submit(event) {
     event.preventDefault()
     const qty = Number(form.qty)
     const payload = {
@@ -96,19 +123,23 @@ export default function TradeForm({ onSubmit, submitting }) {
       fee: isTw ? 0 : Number(form.fee || 0),
       note: form.note,
     }
-    onSubmit(payload)
+    const ok = await onSubmit(payload)
+    if (ok) {
+      setForm((current) => ({ ...initialForm, account: current.account, date: current.date }))
+      setTickerHint('已新增，頁面保留在新增交易。')
+    }
   }
 
   return (
     <form onSubmit={submit} className="grid gap-4 rounded-md border border-line bg-surface p-3 sm:p-4">
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-[1fr_1fr_1fr_auto] sm:gap-3">
-        {ACCOUNTS.map((account) => (
+        {ACCOUNTS.map((account, index) => (
           <button
             key={account}
             type="button"
             onClick={() => update('account', account)}
             className={`rounded-md border px-3 py-2 text-sm ${
-              account === 'x' ? 'text-xs sm:px-2 sm:py-1.5' : ''
+              index === 3 ? 'text-xs opacity-85 sm:px-2 sm:py-1.5' : 'font-medium'
             } ${
               form.account === account ? 'border-sky-400 bg-sky-500/15 text-white' : 'border-line bg-panel text-slate-300'
             }`}
@@ -125,8 +156,8 @@ export default function TradeForm({ onSubmit, submitting }) {
             className="rounded-md border border-line bg-[#0b1020] px-3 py-2"
             value={form.ticker}
             list="ticker-suggestions"
-            onChange={(e) => update('ticker', e.target.value.toUpperCase())}
-            placeholder={tickerLoading ? '讀取代號中...' : '輸入代號'}
+            onChange={(event) => updateTicker(event.target.value)}
+            placeholder={tickerLoading ? '讀取曾輸入代號...' : '輸入股票代號'}
             required
           />
           <datalist id="ticker-suggestions">
@@ -134,24 +165,25 @@ export default function TradeForm({ onSubmit, submitting }) {
               <option key={ticker} value={ticker} />
             ))}
           </datalist>
+          {tickerHint ? <span className="text-xs text-amber-300">{tickerHint}</span> : null}
         </label>
         <label className="grid gap-2 text-sm">
           日期
-          <input className="rounded-md border border-line bg-[#0b1020] px-3 py-2" type="date" value={form.date} onChange={(e) => update('date', e.target.value)} required />
+          <input className="rounded-md border border-line bg-[#0b1020] px-3 py-2" type="date" value={form.date} onChange={(event) => update('date', event.target.value)} required />
         </label>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3 sm:gap-4">
         <label className="grid gap-2 text-sm">
           買賣
-          <select className="rounded-md border border-line bg-[#0b1020] px-3 py-2" value={form.side} onChange={(e) => update('side', e.target.value)}>
+          <select className="rounded-md border border-line bg-[#0b1020] px-3 py-2" value={form.side} onChange={(event) => update('side', event.target.value)}>
             <option value="buy">買入</option>
             <option value="sell">賣出</option>
           </select>
         </label>
         <label className="grid gap-2 text-sm">
           股數
-          <input className="rounded-md border border-line bg-[#0b1020] px-3 py-2" type="number" min="0" step="0.0001" value={form.qty} onChange={(e) => update('qty', e.target.value)} required />
+          <input className="rounded-md border border-line bg-[#0b1020] px-3 py-2" type="number" min="0" step="0.0001" value={form.qty} onChange={(event) => update('qty', event.target.value)} required />
         </label>
         <label className="grid gap-2 text-sm">
           價格
@@ -161,13 +193,13 @@ export default function TradeForm({ onSubmit, submitting }) {
             min="0"
             step="0.0001"
             value={form.price}
-            onChange={(e) => update('price', e.target.value)}
+            onChange={(event) => update('price', event.target.value)}
             required
           />
         </label>
       </div>
 
-      {!isTw ? (
+      {isUs ? (
         <div className="grid gap-2 text-sm">
           <div className="flex items-center justify-between gap-3">
             <span>美股手續費</span>
@@ -185,14 +217,14 @@ export default function TradeForm({ onSubmit, submitting }) {
             min="0"
             step="0.01"
             value={form.fee}
-            onChange={(e) => update('fee', e.target.value)}
+            onChange={(event) => update('fee', event.target.value)}
           />
         </div>
       ) : null}
 
       <label className="grid gap-2 text-sm">
         備註
-        <input className="rounded-md border border-line bg-[#0b1020] px-3 py-2" value={form.note} onChange={(e) => update('note', e.target.value)} />
+        <input className="rounded-md border border-line bg-[#0b1020] px-3 py-2" value={form.note} onChange={(event) => update('note', event.target.value)} />
       </label>
 
       <div className="grid gap-2 rounded-md border border-line bg-panel p-3 text-xs text-slate-300 sm:grid-cols-3 sm:text-sm">
@@ -202,7 +234,7 @@ export default function TradeForm({ onSubmit, submitting }) {
       </div>
 
       <button disabled={submitting} className="rounded-md bg-sky-500 px-4 py-3 font-medium text-white disabled:opacity-60">
-        {submitting ? '送出中' : '新增交易'}
+        {submitting ? '新增中' : '新增交易'}
       </button>
     </form>
   )
