@@ -33,6 +33,8 @@ export const api = {
     const suffix = query.toString() ? `?${query}` : ''
     return request(`/trades/${encodeURIComponent(account)}${suffix}`)
   },
+  getTickerInfo: (account, ticker) =>
+    request(`/trades/${encodeURIComponent(account)}/ticker/${encodeURIComponent(ticker)}`),
   addTrade: (data) => request('/trades', { method: 'POST', body: JSON.stringify(data) }),
   deleteTrade: (id) => request(`/trades/${id}`, { method: 'DELETE' }),
   getManual: () => request('/manual'),

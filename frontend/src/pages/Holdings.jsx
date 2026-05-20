@@ -111,7 +111,7 @@ export default function Holdings() {
             <AssetPieChart title="現金與已投入金額分布" data={allocation} />
           </section>
 
-          <HoldingsTable holdings={portfolio.data.holdings || []} currency={currency} />
+          <HoldingsTable holdings={portfolio.data.holdings || []} account={tab} currency={currency} />
 
           {tab === ACCOUNT_TABS[0] ? (
             <div className="rounded-md border border-line bg-surface p-3 text-xs text-slate-500">

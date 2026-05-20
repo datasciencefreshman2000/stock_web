@@ -24,12 +24,27 @@ function AnimatedRoutes() {
   )
 }
 
+function SiteLogo() {
+  return (
+    <div className="mx-auto flex w-full max-w-6xl items-center gap-2 px-3 pt-3 sm:px-4 sm:pt-4">
+      <div className="grid h-8 w-8 place-items-center rounded-md border border-sky-400/40 bg-sky-500/15 text-sm font-semibold text-sky-100 shadow-sm shadow-sky-950/50">
+        蔡
+      </div>
+      <div className="leading-tight">
+        <div className="text-sm font-semibold text-white">蔡加恩的金庫</div>
+        <div className="text-[11px] text-slate-500">stock vault</div>
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   return (
     <PrivacyProvider>
       <BrowserRouter>
         <div className="min-h-screen bg-[#0b1020] text-slate-100">
-          <main className="mx-auto w-full max-w-6xl px-3 pb-28 pt-4 sm:px-4 sm:pb-24 sm:pt-6">
+          <SiteLogo />
+          <main className="mx-auto w-full max-w-6xl px-3 pb-28 pt-4 sm:px-4 sm:pb-24 sm:pt-5">
             <AnimatedRoutes />
           </main>
           <NavBar />

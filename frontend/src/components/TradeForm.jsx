@@ -46,6 +46,8 @@ export default function TradeForm({ onSubmit, submitting }) {
   const [tickers, setTickers] = useState([])
   const [tickerLoading, setTickerLoading] = useState(false)
   const [tickerHint, setTickerHint] = useState('')
+  const [companyName, setCompanyName] = useState('')
+  const [companyLoading, setCompanyLoading] = useState(false)
 
   const isTw = form.account === ACCOUNTS[0] || form.account === ACCOUNTS[3]
   const isUs = form.account === ACCOUNTS[1] || form.account === ACCOUNTS[2]
@@ -91,6 +93,36 @@ export default function TradeForm({ onSubmit, submitting }) {
       active = false
     }
   }, [form.account])
+
+  useEffect(() => {
+    const ticker = form.ticker.trim().toUpperCase()
+    if (!isTw || !looksLikeTwTicker(ticker)) {
+      setCompanyName('')
+      setCompanyLoading(false)
+      return
+    }
+
+    let active = true
+    const timer = setTimeout(() => {
+      setCompanyLoading(true)
+      api
+        .getTickerInfo(form.account, ticker)
+        .then((data) => {
+          if (active) setCompanyName(data.company_name || '')
+        })
+        .catch(() => {
+          if (active) setCompanyName('')
+        })
+        .finally(() => {
+          if (active) setCompanyLoading(false)
+        })
+    }, 250)
+
+    return () => {
+      active = false
+      clearTimeout(timer)
+    }
+  }, [form.account, form.ticker, isTw])
 
   function update(key, value) {
     setForm((current) => ({ ...current, [key]: value }))
@@ -167,6 +199,11 @@ export default function TradeForm({ onSubmit, submitting }) {
               <option key={ticker} value={ticker} />
             ))}
           </datalist>
+          {companyLoading || companyName ? (
+            <span className="text-xs text-slate-400">
+              {companyLoading ? '查詢公司名稱中...' : companyName}
+            </span>
+          ) : null}
           {tickerHint ? <span className="text-xs text-amber-300">{tickerHint}</span> : null}
         </label>
         <label className="grid gap-2 text-sm">

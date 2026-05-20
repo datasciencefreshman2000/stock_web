@@ -1,22 +1,41 @@
 from fastapi import APIRouter, Query
 
+from config import get_settings
 from models import TradeCreate
 from repositories.summary_cache import clear_summary_cache
 from repositories.trades import create_trade, delete_trade, list_trades
 from services.constants import TW_ACCOUNTS
 from services.fees import calc_tw_fee
+from services.prices import fetch_fugle_company_names_batch
 
 router = APIRouter()
 
 
+@router.get("/{account}/ticker/{ticker}")
+async def get_ticker_info(account: str, ticker: str) -> dict:
+    settings = get_settings()
+    normalized = ticker.strip().upper()
+    company_name = None
+    if account in TW_ACCOUNTS and settings.fugle_ready:
+        names = await fetch_fugle_company_names_batch([normalized], settings.fugle_api_key)
+        company_name = names.get(normalized)
+    return {"ticker": normalized, "company_name": company_name}
+
+
 @router.get("/{account}")
-def get_trades(
+async def get_trades(
     account: str,
     ticker: str | None = Query(default=None),
     start_date: str | None = Query(default=None),
     end_date: str | None = Query(default=None),
 ) -> dict:
-    return {"trades": list_trades(account, ticker, start_date, end_date)}
+    trades = list_trades(account, ticker, start_date, end_date)
+    settings = get_settings()
+    if account in TW_ACCOUNTS and settings.fugle_ready:
+        tickers = sorted({str(row.get("ticker", "")).upper() for row in trades if row.get("ticker")})
+        names = await fetch_fugle_company_names_batch(tickers, settings.fugle_api_key)
+        trades = [{**row, "company_name": names.get(str(row.get("ticker", "")).upper())} for row in trades]
+    return {"trades": trades}
 
 
 @router.post("")
