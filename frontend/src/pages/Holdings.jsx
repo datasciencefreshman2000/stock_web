@@ -42,7 +42,7 @@ export default function Holdings() {
   const unrealizedRatio = accountInvested > 0 ? Number(dashboard.unrealized_pnl || 0) / accountInvested : null
   const realizedRatio = accountInvested > 0 ? Number(dashboard.realized_pnl || 0) / accountInvested : null
   const allocation = [
-    { name: '已投入金額', value: Math.max(Number(dashboard.cost || 0), 0) },
+    { name: '持股市值', value: Math.max(Number(dashboard.market_value || 0), 0) },
     { name: '現金', value: Math.max(inferredCash, 0) },
   ]
 
@@ -108,7 +108,7 @@ export default function Holdings() {
                 accent={pnlClass(dashboard.realized_pnl)}
               />
             </div>
-            <AssetPieChart title="現金與已投入金額分布" data={allocation} />
+            <AssetPieChart title="現金與市值比例" data={allocation} />
           </section>
 
           <HoldingsTable holdings={portfolio.data.holdings || []} account={tab} currency={currency} />

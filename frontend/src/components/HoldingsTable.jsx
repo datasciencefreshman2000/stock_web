@@ -229,24 +229,21 @@ function MobileCardList({ holdings, currency, hideAmounts, activeTicker, onToggl
   return (
     <div className="divide-y divide-line">
       {holdings.map((row) => (
-        <div key={row.ticker} className={`px-3 py-2.5 ${activeTicker === row.ticker ? 'bg-sky-500/5' : ''}`}>
-          <button type="button" onClick={() => onToggle(row.ticker)} className="mb-1.5 flex min-h-0 w-full items-start justify-between gap-3 text-left">
+        <div key={row.ticker} className={`px-3 py-2 ${activeTicker === row.ticker ? 'bg-sky-500/5' : ''}`}>
+          <button type="button" onClick={() => onToggle(row.ticker)} className="mb-1 flex min-h-0 w-full items-start justify-between gap-3 text-left">
             <div className="min-w-0">
               <div className="text-sm font-medium text-white underline-offset-4">{row.ticker}</div>
               {row.company_name ? <div className="truncate text-[11px] text-slate-400">{row.company_name}</div> : null}
             </div>
-            <div className="shrink-0 text-right text-xs text-slate-400">
-              <div>佔比</div>
-              <div className="font-medium text-white">{percent(row.weight)}</div>
+            <div className="shrink-0 text-right text-[11px] text-slate-400">
+              <div className="leading-tight">佔比</div>
+              <div className="text-sm font-semibold leading-tight text-white">{percent(row.weight)}</div>
             </div>
           </button>
           <div className="grid grid-cols-2 gap-2 text-xs">
             <Metric label="市值" value={hideAmounts ? '••••' : money(row.market_value, currency)} />
             <Metric label="損益%" value={percent(row.pnl_pct)} accent={pnlClass(row.pnl)} />
           </div>
-          {!hideAmounts ? (
-            <div className="mt-1 truncate text-[11px] text-slate-500">{money(row.market_value, currency)}</div>
-          ) : null}
           {activeTicker === row.ticker ? renderDetail(row, 'mt-3') : null}
         </div>
       ))}

@@ -221,9 +221,6 @@ export default function Dashboard() {
         <SummaryCard label="投資用現金" value={money(investmentCashTotal)} countTo={investmentCashTotal} />
       </section>
 
-      {/* 帳戶現金比例 */}
-      <CashRatioSection ownAccounts={ownAccounts} hideAmounts={hideAmounts} />
-
       {/* 圓餅圖：手機單張滑動 carousel，桌機 3 欄 grid */}
       <section>
         {/* 手機 carousel */}
@@ -256,6 +253,9 @@ export default function Dashboard() {
           ))}
         </div>
       </section>
+
+      {/* 帳戶現金比例 */}
+      <CashRatioSection ownAccounts={ownAccounts} hideAmounts={hideAmounts} />
 
       {investmentDetails.length ? (
         <section className="rounded-md border border-line bg-surface">
