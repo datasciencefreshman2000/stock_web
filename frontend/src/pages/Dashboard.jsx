@@ -214,11 +214,11 @@ export default function Dashboard() {
       </header>
 
       {/* 摘要卡片：手機 2×2，桌機一排 4 格 */}
-      <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <SummaryCard label="我的總資產" value={money(data.own_total_assets || data.total_assets)} countTo={data.own_total_assets || data.total_assets} />
-        <SummaryCard label="投資市值" value={money(ownInvestmentTotal)} countTo={ownInvestmentTotal} />
-        <SummaryCard label="現金" value={money(ownCashTotal)} countTo={ownCashTotal} />
-        <SummaryCard label="投資用現金" value={money(investmentCashTotal)} countTo={investmentCashTotal} />
+      <section className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+        <SummaryCard compact label="我的總資產" value={money(data.own_total_assets || data.total_assets)} countTo={data.own_total_assets || data.total_assets} />
+        <SummaryCard compact label="投資市值" value={money(ownInvestmentTotal)} countTo={ownInvestmentTotal} />
+        <SummaryCard compact label="現金" value={money(ownCashTotal)} countTo={ownCashTotal} />
+        <SummaryCard compact label="投資用現金" value={money(investmentCashTotal)} countTo={investmentCashTotal} />
       </section>
 
       {/* 圓餅圖：手機單張滑動 carousel，桌機 3 欄 grid */}
@@ -226,7 +226,7 @@ export default function Dashboard() {
         {/* 手機 carousel */}
         <div className="scrollbar-hide flex snap-x snap-mandatory gap-3 overflow-x-auto pb-3 lg:hidden">
           {pieCharts.map((chart) => (
-            <div key={chart.key} className="w-[18rem] max-w-[calc(100vw-2rem)] flex-none snap-start">
+            <div key={chart.key} className="w-full flex-none snap-start">
               <AssetPieChart
                 title={chart.title}
                 data={chart.data}

@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { maskAmount, usePrivacy } from '../context/PrivacyContext'
 import { money } from '../utils/format'
 
-export default function SummaryCard({ label, value, accent, countTo = null, currency = 'TWD' }) {
+export default function SummaryCard({ label, value, accent, countTo = null, currency = 'TWD', compact = false }) {
   const { hideAmounts } = usePrivacy()
   const [displayValue, setDisplayValue] = useState(0)
   const shouldCount = countTo !== null && countTo !== undefined && !Number.isNaN(Number(countTo))
@@ -31,9 +31,9 @@ export default function SummaryCard({ label, value, accent, countTo = null, curr
   const shownValue = hideAmounts ? maskAmount(rawValue) : rawValue
 
   return (
-    <div className="soft-pop min-w-0 rounded-md border border-line bg-surface p-3 transition duration-150 hover:-translate-y-0.5 hover:border-sky-500/60 sm:p-4">
+    <div className={`soft-pop min-w-0 rounded-md border border-line bg-surface transition duration-150 hover:-translate-y-0.5 hover:border-sky-500/60 ${compact ? 'p-2.5 sm:p-4' : 'p-3 sm:p-4'}`}>
       <div className="text-xs leading-tight text-slate-400 sm:text-sm">{label}</div>
-      <div className={`mt-1.5 break-words text-xl font-semibold leading-tight tabular-nums sm:mt-2 sm:text-2xl ${accent || 'text-white'}`}>{shownValue}</div>
+      <div className={`${compact ? 'mt-1 text-lg sm:mt-2 sm:text-2xl' : 'mt-1.5 text-xl sm:mt-2 sm:text-2xl'} break-words font-semibold leading-tight tabular-nums ${accent || 'text-white'}`}>{shownValue}</div>
     </div>
   )
 }
