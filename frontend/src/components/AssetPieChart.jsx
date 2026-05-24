@@ -20,7 +20,7 @@ function pieLabel({ cx, cy, midAngle, innerRadius, outerRadius, percent }) {
   )
 }
 
-export default function AssetPieChart({ data, title = '資產分布', onItemClick, headerAction }) {
+export default function AssetPieChart({ data, title = '資產分布', onItemClick, headerAction, compact = false }) {
   const { hideAmounts } = usePrivacy()
   const [showLegend, setShowLegend] = useState(true)
   const rows = data.filter((item) => item.value > 0)
@@ -35,11 +35,11 @@ export default function AssetPieChart({ data, title = '資產分布', onItemClic
         <div className="min-w-0 text-sm font-medium leading-tight text-slate-200">{title}</div>
         {headerAction}
       </div>
-      <div className="relative h-48 sm:h-60">
+      <div className={`relative ${compact ? 'h-40' : 'h-48 sm:h-60'}`}>
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
           <div className="text-center">
             <div className="text-xs text-slate-500">合計</div>
-            <div className="max-w-28 break-words text-sm font-semibold leading-tight text-white sm:max-w-none">
+            <div className={`${compact ? 'max-w-24 text-xs' : 'max-w-28 text-sm sm:max-w-none'} break-words font-semibold leading-tight text-white`}>
               {hideAmounts ? maskAmount(money(total)) : money(total)}
             </div>
           </div>
@@ -50,8 +50,8 @@ export default function AssetPieChart({ data, title = '資產分布', onItemClic
               data={rows}
               dataKey="value"
               nameKey="name"
-              outerRadius={82}
-              innerRadius={52}
+              outerRadius={compact ? 66 : 82}
+              innerRadius={compact ? 42 : 52}
               label={pieLabel}
               labelLine={false}
               onClick={(item) => onItemClick?.(item.name)}

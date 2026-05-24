@@ -226,12 +226,13 @@ export default function Dashboard() {
         {/* 手機 carousel */}
         <div className="scrollbar-hide flex snap-x snap-mandatory gap-3 overflow-x-auto pb-3 lg:hidden">
           {pieCharts.map((chart) => (
-            <div key={chart.key} className="w-[calc(100%-2rem)] flex-none snap-start">
+            <div key={chart.key} className="w-[18rem] max-w-[calc(100vw-2rem)] flex-none snap-start">
               <AssetPieChart
                 title={chart.title}
                 data={chart.data}
                 onItemClick={chart.onItemClick}
                 headerAction={chart.headerAction}
+                compact
               />
             </div>
           ))}
