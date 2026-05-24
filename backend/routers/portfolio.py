@@ -38,7 +38,7 @@ async def get_portfolio(account: str, refresh_prices: bool = Query(default=False
     )
     holdings = await build_holdings(account, trades, prices, company_names)
     dashboard = summarize_account(account, trades, holdings)
-    usd_rate = await fetch_usd_rate(settings.finnhub_key, refresh=False) if settings.finnhub_ready else 31.316
+    usd_rate = await fetch_usd_rate(refresh=False)
     manual_rows = {row["key"]: float(row["value"]) for row in list_manual_values()}
     cash_rows = list_cash_accounts()
     enrich_account_summary(dashboard, account, usd_rate, manual_rows.get(invested_key(account)))

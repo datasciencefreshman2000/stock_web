@@ -263,25 +263,51 @@ async def fetch_prices_batch(
     return results
 
 
-async def fetch_usd_rate(api_key: str, refresh: bool = False) -> float:
+async def fetch_exchange_rate_api_usd_twd(client: httpx.AsyncClient) -> float:
+    response = await client.get("https://open.er-api.com/v6/latest/USD", timeout=8)
+    response.raise_for_status()
+    data = response.json()
+    rate = data.get("rates", {}).get("TWD")
+    if data.get("result") != "success" or rate is None:
+        raise ValueError("ExchangeRate-API did not return USD/TWD")
+    return float(rate)
+
+
+async def fetch_currency_api_usd_twd(client: httpx.AsyncClient) -> float:
+    response = await client.get(
+        "https://cdn.jsdelivr.net/gh/fawazahmed0/currency-api@1/latest/currencies/usd/twd.json",
+        timeout=8,
+    )
+    response.raise_for_status()
+    data = response.json()
+    rate = data.get("twd") or data.get("usd", {}).get("twd")
+    if rate is None:
+        raise ValueError("Currency-api did not return USD/TWD")
+    return float(rate)
+
+
+async def fetch_usd_rate(api_key: str = "", refresh: bool = False) -> float:
     if RATE_CACHE.get("usd_twd") and not refresh:
         return float(RATE_CACHE["usd_twd"])
-    if not refresh:
-        return 31.316
 
-    url = "https://finnhub.io/api/v1/forex/rates"
-    params = {"base": "USD", "token": api_key}
+    errors: list[str] = []
     async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(url, params=params, timeout=5)
-            response.raise_for_status()
-            data = response.json()
-            rate = float(data["quote"].get("TWD", 31.316))
-            RATE_CACHE["usd_twd"] = rate
-            RATE_CACHE["fetched_at"] = _now_iso()
-            return rate
-        except Exception:
-            return 31.316
+        for source, fetcher in (
+            ("exchangerate-api", fetch_exchange_rate_api_usd_twd),
+            ("currency-api", fetch_currency_api_usd_twd),
+        ):
+            try:
+                rate = await fetcher(client)
+                RATE_CACHE["usd_twd"] = rate
+                RATE_CACHE["fetched_at"] = _now_iso()
+                RATE_CACHE["source"] = source
+                RATE_CACHE.pop("error", None)
+                return rate
+            except Exception as exc:
+                errors.append(f"{source}: {type(exc).__name__}")
+
+    RATE_CACHE["error"] = "; ".join(errors)
+    return 31.316
 
 
 def get_price_status() -> dict:
@@ -291,4 +317,6 @@ def get_price_status() -> dict:
         "cached_symbols": sorted(PRICE_CACHE.keys()),
         "usd_rate_cached": bool(RATE_CACHE.get("usd_twd")),
         "usd_rate_fetched_at": RATE_CACHE.get("fetched_at"),
+        "usd_rate_source": RATE_CACHE.get("source"),
+        "usd_rate_error": RATE_CACHE.get("error"),
     }

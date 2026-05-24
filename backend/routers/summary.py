@@ -17,7 +17,7 @@ router = APIRouter()
 async def calculate_summary(refresh_prices: bool) -> dict:
     settings = get_settings()
     reset_price_status()
-    usd_rate = await fetch_usd_rate(settings.finnhub_key, refresh=refresh_prices) if settings.finnhub_ready else 31.316
+    usd_rate = await fetch_usd_rate(refresh=refresh_prices)
 
     manual_rows = {row["key"]: float(row["value"]) for row in list_manual_values()}
     accounts = {}
