@@ -12,10 +12,7 @@ const items = [
 export default function NavBar() {
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 overflow-hidden border-t border-line bg-[#0d1426]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
-      <div
-        className="mx-auto grid w-screen max-w-full items-end px-1 py-1.5 sm:w-full sm:max-w-3xl sm:px-2 sm:py-2"
-        style={{ gridTemplateColumns: 'repeat(5, minmax(0, 1fr))' }}
-      >
+      <div className="mx-auto grid w-full min-w-0 max-w-3xl grid-cols-5 items-end px-1 py-1.5 sm:px-2 sm:py-2">
         {items.map((item) => {
           const Icon = item.icon
           return (

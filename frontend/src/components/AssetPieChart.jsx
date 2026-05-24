@@ -30,7 +30,7 @@ export default function AssetPieChart({ data, title = '資產分布', onItemClic
   }
 
   return (
-    <div className="rounded-md border border-line bg-surface p-3">
+    <div className="min-w-0 overflow-hidden rounded-md border border-line bg-surface p-3">
       <div className="mb-2 flex items-center justify-between gap-3">
         <div className="min-w-0 text-sm font-medium leading-tight text-slate-200">{title}</div>
         {headerAction}
@@ -83,7 +83,7 @@ export default function AssetPieChart({ data, title = '資產分布', onItemClic
               key={item.name}
               type="button"
               onClick={() => onItemClick?.(item.name)}
-              className="grid grid-cols-[minmax(0,1fr)_3.8rem_minmax(5.5rem,auto)] items-center gap-2 rounded-md px-2 py-1.5 text-left text-slate-300 hover:bg-white/5"
+              className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_3.2rem_minmax(0,5.8rem)] items-center gap-2 rounded-md px-2 py-1.5 text-left text-slate-300 hover:bg-white/5"
             >
               <span className="flex min-w-0 items-center gap-2">
                 <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: COLORS[index % COLORS.length] }} />
@@ -92,7 +92,7 @@ export default function AssetPieChart({ data, title = '資產分布', onItemClic
               <span className="text-right tabular-nums text-slate-500">
                 {total > 0 ? `${((item.value / total) * 100).toFixed(1)}%` : '--'}
               </span>
-              <span className="truncate text-right tabular-nums text-slate-200">
+              <span className="min-w-0 truncate text-right tabular-nums text-slate-200">
                 {hideAmounts ? maskAmount(money(item.value)) : money(item.value)}
               </span>
             </button>

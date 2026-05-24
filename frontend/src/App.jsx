@@ -42,7 +42,7 @@ export default function App() {
   return (
     <PrivacyProvider>
       <BrowserRouter>
-        <div className="min-h-screen bg-[#0b1020] text-slate-100">
+        <div className="min-h-screen overflow-x-hidden bg-[#0b1020] text-slate-100">
           <SiteLogo />
           <main className="mx-auto w-full max-w-6xl px-3 pb-28 pt-4 sm:px-4 sm:pb-24 sm:pt-5">
             <AnimatedRoutes />
