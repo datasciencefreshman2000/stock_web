@@ -1,5 +1,19 @@
 from database import get_supabase
 
+X_ACCOUNT_ALIASES = ["x", "X", "x配置(台股)", "X配置(台股)", "x台股", "X台股"]
+
+
+def normalize_account(account: str | None) -> str | None:
+    if not account:
+        return account
+    trimmed = account.strip()
+    return "x" if trimmed in X_ACCOUNT_ALIASES else trimmed
+
+
+def account_filter_values(account: str) -> list[str]:
+    normalized = normalize_account(account)
+    return X_ACCOUNT_ALIASES if normalized == "x" else [normalized]
+
 
 def list_trades(
     account: str | None = None,
@@ -9,7 +23,8 @@ def list_trades(
 ) -> list[dict]:
     query = get_supabase().table("trades").select("*")
     if account:
-        query = query.eq("account", account)
+        accounts = account_filter_values(account)
+        query = query.in_("account", accounts) if len(accounts) > 1 else query.eq("account", accounts[0])
     if ticker:
         query = query.eq("ticker", ticker.upper())
     if start_date:
@@ -25,6 +40,8 @@ def list_trades(
 
 
 def create_trade(payload: dict) -> dict:
+    if payload.get("account"):
+        payload["account"] = normalize_account(payload["account"])
     if payload.get("ticker"):
         payload["ticker"] = payload["ticker"].strip().upper()
     response = get_supabase().table("trades").insert(payload).execute()

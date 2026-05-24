@@ -11,7 +11,7 @@ import { useManual } from '../hooks/useManual'
 import { useSummary } from '../hooks/useSummary'
 import { money } from '../utils/format'
 
-const BASE_ROWS = ['新光現金', '第一現金', '郵局現金', '國泰現金', '外面欠錢 (待收款)', '緊急現金', '公司欠錢 (待收款)', '信用卡欠錢', '身上現金']
+const BASE_ROWS = ['新光現金', '第一現金', '郵局現金', '國泰現金', '外面欠錢 (待收款)', '社團欠錢 (待收款)', '緊急現金', '公司欠錢 (待收款)', '信用卡欠錢', '身上現金']
 const BANK_ROWS = ['新光現金', '第一現金', '郵局現金', '國泰現金']
 const INCOME_SOURCES = ['宇統資訊', '陽明高中', '實驗小學', '接案']
 const OTHER_TYPES = ['外面欠錢 (待收款)', '社團欠錢', '公司欠錢', '外面欠錢 (待還款)', '緊急現金']
@@ -385,7 +385,7 @@ export default function Cash() {
   const grouped = useMemo(() => {
     const map = new Map(BASE_ROWS.map((name) => [name, { name, TWD: null, USD: null }]))
     rows
-      .filter((row) => !['社團欠錢（待收）', '新增外幣'].includes(row.name))
+      .filter((row) => row.name !== '新增外幣')
       .forEach((row) => {
         if (!map.has(row.name)) map.set(row.name, { name: row.name, TWD: null, USD: null })
         const currency = row.currency || 'TWD'

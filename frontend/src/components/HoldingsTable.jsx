@@ -159,6 +159,7 @@ export default function HoldingsTable({ holdings, account, currency = 'TWD' }) {
       <div className={expanded ? 'hidden' : 'sm:hidden'}>
         <MobileCardList
           holdings={sortedHoldings}
+          account={account}
           currency={currency}
           hideAmounts={hideAmounts}
           activeTicker={activeTicker}
@@ -225,15 +226,18 @@ export default function HoldingsTable({ holdings, account, currency = 'TWD' }) {
   )
 }
 
-function MobileCardList({ holdings, currency, hideAmounts, activeTicker, onToggle, renderDetail }) {
+function MobileCardList({ holdings, account, currency, hideAmounts, activeTicker, onToggle, renderDetail }) {
   return (
     <div className="divide-y divide-line">
       {holdings.map((row) => (
         <div key={row.ticker} className={`px-3 py-2 ${activeTicker === row.ticker ? 'bg-sky-500/5' : ''}`}>
           <button type="button" onClick={() => onToggle(row.ticker)} className="mb-1 flex min-h-0 w-full items-start justify-between gap-3 text-left">
             <div className="min-w-0">
-              <div className="text-sm font-medium text-white underline-offset-4">{row.ticker}</div>
-              {row.company_name ? <div className="truncate text-[11px] text-slate-400">{row.company_name}</div> : null}
+              <div className="flex min-w-0 items-baseline gap-2">
+                <span className="shrink-0 text-sm font-medium text-white underline-offset-4">{row.ticker}</span>
+                {account === '台股' && row.company_name ? <span className="truncate text-[11px] text-slate-400">{row.company_name}</span> : null}
+              </div>
+              {account !== '台股' && row.company_name ? <div className="truncate text-[11px] text-slate-400">{row.company_name}</div> : null}
             </div>
             <div className="shrink-0 text-right text-[11px] text-slate-400">
               <div className="leading-tight">佔比</div>
@@ -241,8 +245,8 @@ function MobileCardList({ holdings, currency, hideAmounts, activeTicker, onToggl
             </div>
           </button>
           <div className="grid grid-cols-2 gap-2 text-xs">
-            <Metric label="市值" value={hideAmounts ? '••••' : money(row.market_value, currency)} />
-            <Metric label="損益%" value={percent(row.pnl_pct)} accent={pnlClass(row.pnl)} />
+            <Metric label="市值" value={hideAmounts ? '••••' : money(row.market_value, currency)} inline />
+            <Metric label="損益" value={percent(row.pnl_pct)} accent={pnlClass(row.pnl)} inline />
           </div>
           {activeTicker === row.ticker ? renderDetail(row, 'mt-3') : null}
         </div>
@@ -304,7 +308,16 @@ function HoldingTradeDetails({ row, trades, loading, error, currency, hideAmount
   )
 }
 
-function Metric({ label, value, accent = 'text-slate-100' }) {
+function Metric({ label, value, accent = 'text-slate-100', inline = false }) {
+  if (inline) {
+    return (
+      <div className="flex min-w-0 items-center justify-between gap-2 rounded-md bg-panel/50 px-2 py-1.5">
+        <div className="shrink-0 text-slate-400">{label}</div>
+        <div className={`min-w-0 truncate text-right tabular-nums ${accent}`}>{value}</div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-w-0">
       <div className="text-slate-400">{label}</div>

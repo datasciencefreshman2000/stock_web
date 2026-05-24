@@ -22,7 +22,7 @@ function pieLabel({ cx, cy, midAngle, innerRadius, outerRadius, percent }) {
 
 export default function AssetPieChart({ data, title = '資產分布', onItemClick, headerAction }) {
   const { hideAmounts } = usePrivacy()
-  const [showLegend, setShowLegend] = useState(false)
+  const [showLegend, setShowLegend] = useState(true)
   const rows = data.filter((item) => item.value > 0)
   const total = rows.reduce((sum, item) => sum + item.value, 0)
   if (!rows.length) {
