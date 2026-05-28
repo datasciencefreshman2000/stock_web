@@ -79,6 +79,46 @@ input[type='number']::-webkit-inner-spin-button {
   animation: loading-orbit 1.8s linear infinite;
 }
 
+.summary-hero-card {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.summary-hero-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(120deg, transparent 0%, rgba(56, 189, 248, 0.07) 34%, rgba(255, 255, 255, 0.13) 50%, transparent 66%);
+  transform: translateX(-120%);
+  animation: summary-card-sheen 900ms ease-out 180ms both;
+}
+
+.summary-single-enter {
+  animation: summary-single-enter 520ms cubic-bezier(0.18, 0.9, 0.2, 1) both;
+}
+
+.summary-grid-enter {
+  animation: summary-grid-shell 220ms ease-out both;
+}
+
+.summary-grid-enter > * {
+  animation: summary-card-fan 420ms cubic-bezier(0.18, 0.9, 0.2, 1) both;
+}
+
+.summary-grid-enter > *:nth-child(2) {
+  animation-delay: 45ms;
+}
+
+.summary-grid-enter > *:nth-child(3) {
+  animation-delay: 90ms;
+}
+
+.summary-grid-enter > *:nth-child(4) {
+  animation-delay: 135ms;
+}
+
 @keyframes page-enter {
   from {
     opacity: 0;
@@ -133,6 +173,62 @@ input[type='number']::-webkit-inner-spin-button {
   to {
     transform: rotate(360deg);
     box-shadow: 12px 0 0 -8px rgba(56, 189, 248, 0.85);
+  }
+}
+
+@keyframes summary-card-sheen {
+  from {
+    transform: translateX(-120%);
+  }
+  to {
+    transform: translateX(120%);
+  }
+}
+
+@keyframes summary-single-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(18px) scale(0.92);
+    filter: blur(7px);
+  }
+  68% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.018);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes summary-grid-shell {
+  from {
+    opacity: 0.6;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes summary-card-fan {
+  0% {
+    opacity: 0;
+    transform: translateY(14px) scale(0.9);
+    filter: blur(5px);
+  }
+  72% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.025);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
   }
 }
 

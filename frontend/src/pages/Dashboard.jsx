@@ -219,12 +219,12 @@ export default function Dashboard() {
       {/* 摘要卡片：手機 2×2，桌機一排 4 格 */}
       <section>
         {!summaryExpanded ? (
-          <button type="button" onClick={() => setSummaryExpanded(true)} className="block w-full text-left sm:hidden">
-            <SummaryCard compact label="總資產" value={money(data.own_total_assets || data.total_assets)} countTo={data.own_total_assets || data.total_assets} />
+          <button type="button" onClick={() => setSummaryExpanded(true)} className="summary-single-enter relative block w-full text-left sm:hidden">
+            <SummaryCard hero label="總資產" value={money(data.own_total_assets || data.total_assets)} countTo={data.own_total_assets || data.total_assets} />
           </button>
         ) : null}
-        <div className={`${summaryExpanded ? 'grid' : 'hidden'} grid-cols-2 gap-2 sm:grid sm:grid-cols-4 sm:gap-3`}>
-          <button type="button" onClick={() => setSummaryExpanded(false)} className="text-left sm:cursor-default" aria-label="收合總資產摘要">
+        <div className={`${summaryExpanded ? 'summary-grid-enter grid' : 'hidden'} grid-cols-2 gap-2 sm:grid sm:grid-cols-4 sm:gap-3`}>
+          <button type="button" onClick={() => setSummaryExpanded(false)} className="relative text-left sm:cursor-default" aria-label="收合總資產摘要">
             <SummaryCard compact label="總資產" value={money(data.own_total_assets || data.total_assets)} countTo={data.own_total_assets || data.total_assets} />
           </button>
           <SummaryCard compact label="投資市值" value={money(ownInvestmentTotal)} countTo={ownInvestmentTotal} />
