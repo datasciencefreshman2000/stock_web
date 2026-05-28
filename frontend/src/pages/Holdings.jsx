@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import AssetPieChart from '../components/AssetPieChart'
 import HoldingsTable from '../components/HoldingsTable'
@@ -13,12 +13,19 @@ import { useSummary } from '../hooks/useSummary'
 import { api } from '../api/client'
 import { money, percent, pnlClass } from '../utils/format'
 
-function MiniMetric({ label, value, accent }) {
+function MiniMetric({ label, value, accent, onClick }) {
+  const Component = onClick ? 'button' : 'div'
   return (
-    <div className="min-w-0 rounded-md border border-line bg-surface p-3">
+    <Component
+      type={onClick ? 'button' : undefined}
+      onClick={onClick}
+      className={`min-w-0 rounded-md border border-line bg-surface p-3 text-left transition ${
+        onClick ? 'active:scale-[0.99] hover:border-sky-500/60' : ''
+      }`}
+    >
       <div className="text-xs text-slate-400">{label}</div>
       <div className={`mt-1 truncate text-base font-semibold tabular-nums sm:text-lg ${accent || 'text-white'}`}>{value}</div>
-    </div>
+    </Component>
   )
 }
 
@@ -26,6 +33,7 @@ export default function Holdings() {
   const { hideAmounts } = usePrivacy()
   const [tab, setTab] = useState(ACCOUNT_TABS[0])
   const [refreshToken, setRefreshToken] = useState(0)
+  const [metricsExpanded, setMetricsExpanded] = useState(false)
   const isManual = tab === ACCOUNT_TABS[3]
   const portfolio = usePortfolio(isManual ? ACCOUNT_TABS[0] : tab, refreshToken)
   const manual = useAsync(() => api.getManual(), [])
@@ -45,6 +53,49 @@ export default function Holdings() {
     { name: '持股市值', value: Math.max(Number(dashboard.market_value || 0), 0) },
     { name: '現金', value: Math.max(inferredCash, 0) },
   ]
+
+  useEffect(() => {
+    setMetricsExpanded(false)
+  }, [tab])
+
+  const metricCards = [
+    {
+      key: 'total-pnl',
+      label: '總損益',
+      value: `${hideAmounts ? maskAmount(money(totalPnl, currency)) : money(totalPnl, currency)} (${percent(pnlRatio)})`,
+      accent: pnlClass(totalPnl),
+      primary: true,
+    },
+    {
+      key: 'account-total',
+      label: '現金+市值',
+      value: hideAmounts ? maskAmount(money(accountTotalValue, currency)) : money(accountTotalValue, currency),
+      primary: true,
+    },
+    {
+      key: 'unrealized',
+      label: '未實現損益',
+      value: `${hideAmounts ? maskAmount(money(dashboard.unrealized_pnl, currency)) : money(dashboard.unrealized_pnl, currency)} (${percent(unrealizedRatio)})`,
+      accent: pnlClass(dashboard.unrealized_pnl),
+    },
+    {
+      key: 'market-value',
+      label: '市值',
+      value: hideAmounts ? maskAmount(money(dashboard.market_value, currency)) : money(dashboard.market_value, currency),
+    },
+    {
+      key: 'realized',
+      label: '已實現損益',
+      value: `${hideAmounts ? maskAmount(money(dashboard.realized_pnl, currency)) : money(dashboard.realized_pnl, currency)} (${percent(realizedRatio)})`,
+      accent: pnlClass(dashboard.realized_pnl),
+    },
+    {
+      key: 'cash',
+      label: '現金',
+      value: hideAmounts ? maskAmount(money(inferredCash, currency)) : money(inferredCash, currency),
+    },
+  ]
+  const visibleMetricCards = metricsExpanded ? metricCards : metricCards.slice(0, 2)
 
   return (
     <div className="grid gap-5">
@@ -88,25 +139,16 @@ export default function Holdings() {
       {!active.loading && !active.error && !isManual ? (
         <>
           <section className="grid gap-3 lg:grid-cols-[1fr_0.9fr]">
-            <div className="grid grid-cols-2 gap-3">
-              <MiniMetric
-                label="總損益"
-                value={`${hideAmounts ? maskAmount(money(totalPnl, currency)) : money(totalPnl, currency)} (${percent(pnlRatio)})`}
-                accent={pnlClass(totalPnl)}
-              />
-              <MiniMetric label="現金+市值" value={hideAmounts ? maskAmount(money(accountTotalValue, currency)) : money(accountTotalValue, currency)} />
-              <MiniMetric label="現金" value={hideAmounts ? maskAmount(money(inferredCash, currency)) : money(inferredCash, currency)} accent={pnlClass(inferredCash)} />
-              <MiniMetric label="市值" value={hideAmounts ? maskAmount(money(dashboard.market_value, currency)) : money(dashboard.market_value, currency)} />
-              <MiniMetric
-                label="未實現損益"
-                value={`${hideAmounts ? maskAmount(money(dashboard.unrealized_pnl, currency)) : money(dashboard.unrealized_pnl, currency)} (${percent(unrealizedRatio)})`}
-                accent={pnlClass(dashboard.unrealized_pnl)}
-              />
-              <MiniMetric
-                label="已實現損益"
-                value={`${hideAmounts ? maskAmount(money(dashboard.realized_pnl, currency)) : money(dashboard.realized_pnl, currency)} (${percent(realizedRatio)})`}
-                accent={pnlClass(dashboard.realized_pnl)}
-              />
+            <div className={`grid grid-cols-2 gap-3 ${metricsExpanded ? 'summary-grid-enter' : 'summary-single-enter'}`}>
+              {visibleMetricCards.map((card) => (
+                <MiniMetric
+                  key={card.key}
+                  label={card.label}
+                  value={card.value}
+                  accent={card.accent}
+                  onClick={() => (card.primary ? setMetricsExpanded(true) : setMetricsExpanded(false))}
+                />
+              ))}
             </div>
             <AssetPieChart title="現金與市值比例" data={allocation} />
           </section>
