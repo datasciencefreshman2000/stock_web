@@ -79,6 +79,7 @@ async def calculate_summary(refresh_prices: bool) -> dict:
     invested = {account: manual_rows.get(invested_key(account), 0) for account in ACCOUNTS}
     investments = list_manual_investments()
     investment_total = sum(float(row.get("value") or 0) for row in investments)
+    manual_investment_cash_total = sum(float(row.get("cash_amount") or 0) for row in investments)
 
     cash_rows = list_cash_accounts()
     cash_by_account = {account: cash_summary(cash_rows, usd_rate, account) for account in ACCOUNTS}
@@ -94,10 +95,11 @@ async def calculate_summary(refresh_prices: bool) -> dict:
         "manual": manual,
         "investments": investments,
         "investment_total": investment_total,
+        "manual_investment_cash_total": manual_investment_cash_total,
         "invested": invested,
         "cash": cash,
-        "total_assets": own_account_total + investment_total + own_cash_total,
-        "own_total_assets": own_account_total + investment_total + own_cash_total,
+        "total_assets": own_account_total + investment_total + manual_investment_cash_total + own_cash_total,
+        "own_total_assets": own_account_total + investment_total + manual_investment_cash_total + own_cash_total,
         "external_total_assets": external_account_total + external_cash_total,
         "price_status": get_price_status(),
     }

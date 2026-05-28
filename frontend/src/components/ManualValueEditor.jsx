@@ -41,6 +41,7 @@ export default function ManualValueEditor({ investments = [], usdRate = 31.316, 
         name: draft.name ?? row.name,
         asset_type: draft.asset_type ?? row.asset_type,
         cost: draft.cost === undefined ? row.cost : stored(draft.cost),
+        cash_amount: draft.cash_amount === undefined ? Number(row.cash_amount || 0) : stored(draft.cash_amount),
         value: draft.value === undefined ? row.value : stored(draft.value),
         currency: 'TWD',
       })
@@ -64,6 +65,7 @@ export default function ManualValueEditor({ investments = [], usdRate = 31.316, 
         name: '新增標的',
         asset_type: '其他',
         cost: 0,
+        cash_amount: 0,
         value: 0,
         currency: 'TWD',
       })
@@ -102,11 +104,14 @@ export default function ManualValueEditor({ investments = [], usdRate = 31.316, 
       <div className="divide-y divide-line">
         {investments.map((row) => {
           const cost = Number(draftValue(row, 'cost') || 0)
+          const cash = Number(draftValue(row, 'cash_amount') || 0)
           const value = Number(draftValue(row, 'value') || 0)
-          const pnl = value - cost
+          const currentTotal = cash + value
+          const cashRatio = currentTotal > 0 ? cash / currentTotal : null
+          const pnl = currentTotal - cost
           const roi = cost > 0 ? pnl / cost : null
           return (
-            <div key={row.id} className="grid gap-3 px-3 py-3 sm:px-4 lg:grid-cols-[1.1fr_0.75fr_0.9fr_0.9fr_1fr_auto] lg:items-center">
+            <div key={row.id} className="grid gap-3 px-3 py-3 sm:px-4 lg:grid-cols-[1.1fr_0.75fr_0.82fr_0.82fr_0.82fr_1fr_auto] lg:items-center">
               <div className="grid grid-cols-[1fr_auto] gap-2 lg:block">
                 <input
                   className="min-w-0 rounded-md border border-line bg-[#0b1020] px-3 py-2 outline-none focus:border-sky-500"
@@ -137,7 +142,7 @@ export default function ManualValueEditor({ investments = [], usdRate = 31.316, 
                 <option value="其他">其他</option>
               </select>
               <label className="grid gap-1 text-xs text-slate-400 lg:block">
-                <span className="lg:hidden">成本</span>
+                <span>投入金額</span>
                 <input
                   className="w-full rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm text-white outline-none focus:border-sky-500"
                   type={hideAmounts ? 'password' : 'number'}
@@ -147,7 +152,17 @@ export default function ManualValueEditor({ investments = [], usdRate = 31.316, 
                 />
               </label>
               <label className="grid gap-1 text-xs text-slate-400 lg:block">
-                <span className="lg:hidden">現值</span>
+                <span>現金量</span>
+                <input
+                  className="w-full rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm text-white outline-none focus:border-sky-500"
+                  type={hideAmounts ? 'password' : 'number'}
+                  value={drafts[row.id]?.cash_amount ?? display(row.cash_amount || 0)}
+                  onChange={(event) => update(row, { cash_amount: event.target.value })}
+                  onBlur={() => save(row)}
+                />
+              </label>
+              <label className="grid gap-1 text-xs text-slate-400 lg:block">
+                <span>市值</span>
                 <input
                   className="w-full rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm text-white outline-none focus:border-sky-500"
                   type={hideAmounts ? 'password' : 'number'}
@@ -157,7 +172,8 @@ export default function ManualValueEditor({ investments = [], usdRate = 31.316, 
                 />
               </label>
               <div className={`rounded-md bg-panel/60 px-3 py-2 text-right text-sm lg:bg-transparent lg:px-0 ${pnlClass(pnl)}`}>
-                {hideAmounts ? percent(roi) : `${money(pnl, currency)} / ${percent(roi)}`}
+                <div className="text-xs text-slate-400">現金 {percent(cashRatio)}</div>
+                <div>{hideAmounts ? percent(roi) : `${money(pnl, currency)} / ${percent(roi)}`}</div>
                 {saving === row.id ? <span className="ml-2 text-slate-400">儲存中</span> : null}
               </div>
               <button

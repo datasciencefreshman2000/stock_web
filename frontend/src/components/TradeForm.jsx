@@ -213,13 +213,26 @@ export default function TradeForm({ onSubmit, submitting }) {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3 sm:gap-4">
-        <label className="grid gap-2 text-sm">
+        <div className="grid gap-2 text-sm">
           買賣
-          <select className="rounded-md border border-line bg-[#0b1020] px-3 py-2" value={form.side} onChange={(event) => update('side', event.target.value)}>
-            <option value="buy">買入</option>
-            <option value="sell">賣出</option>
-          </select>
-        </label>
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              ['buy', '買入'],
+              ['sell', '賣出'],
+            ].map(([side, label]) => (
+              <button
+                key={side}
+                type="button"
+                onClick={() => update('side', side)}
+                className={`rounded-md border px-3 py-2 text-sm font-medium transition ${
+                  form.side === side ? 'border-sky-400 bg-sky-500/15 text-white' : 'border-line bg-[#0b1020] text-slate-300'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
         <label className="grid gap-2 text-sm">
           股數
           <input className="rounded-md border border-line bg-[#0b1020] px-3 py-2" type="number" min="0" step="0.0001" value={form.qty} onChange={(event) => update('qty', event.target.value)} required />

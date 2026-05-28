@@ -3,6 +3,7 @@ create table if not exists manual_investments (
   name text not null,
   asset_type text not null default '其他',
   cost numeric not null default 0,
+  cash_amount numeric not null default 0,
   value numeric not null default 0,
   currency text not null default 'TWD',
   updated_at timestamptz default now(),

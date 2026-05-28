@@ -81,6 +81,7 @@ class ManualInvestmentCreate(BaseModel):
     name: str = Field(min_length=1)
     asset_type: str = "其他"
     cost: float = Field(ge=0)
+    cash_amount: float = Field(default=0, ge=0)
     value: float = Field(ge=0)
     currency: str = "TWD"
 
@@ -89,6 +90,7 @@ class ManualInvestmentUpdate(BaseModel):
     name: str | None = None
     asset_type: str | None = None
     cost: float | None = Field(default=None, ge=0)
+    cash_amount: float | None = Field(default=None, ge=0)
     value: float | None = Field(default=None, ge=0)
     currency: str | None = None
 

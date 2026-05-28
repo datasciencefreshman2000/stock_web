@@ -72,6 +72,7 @@ function CashRatioSection({ ownAccounts, hideAmounts }) {
 export default function Dashboard() {
   const [refreshToken, setRefreshToken] = useState(0)
   const [selectedInvestmentGroup, setSelectedInvestmentGroup] = useState(null)
+  const [summaryExpanded, setSummaryExpanded] = useState(false)
   const { hideAmounts, toggleHideAmounts } = usePrivacy()
   const { data, error, loading } = useSummary(refreshToken)
 
@@ -101,6 +102,7 @@ export default function Dashboard() {
   }))
   const investments = data.investments || []
   const investmentTotal = data.investment_total || 0
+  const manualInvestmentCashTotal = data.manual_investment_cash_total || 0
   const investmentsByType = investments.reduce((acc, row) => {
     const key = row.asset_type || '其他'
     acc[key] = (acc[key] || 0) + Number(row.value || 0)
@@ -109,7 +111,7 @@ export default function Dashboard() {
   const ownCashTotal = data.cash?.twd_equivalent || 0
   const ownStockTotal = stockRows.reduce((sum, row) => sum + row.value, 0)
   const ownInvestmentTotal = ownStockTotal + investmentTotal
-  const investmentCashTotal = Object.values(ownAccounts).reduce(
+  const investmentCashTotal = manualInvestmentCashTotal + Object.values(ownAccounts).reduce(
     (sum, row) => sum + Math.max(Number(row.inferred_cash_twd || 0), 0),
     0,
   )
@@ -141,7 +143,7 @@ export default function Dashboard() {
     { name: '投資', value: ownInvestmentTotal + investmentCashTotal },
     { name: '現金', value: ownCashTotal },
   ]
-  const investmentPnlTotal = investments.reduce((sum, row) => sum + Number(row.value || 0) - Number(row.cost || 0), 0)
+  const investmentPnlTotal = investments.reduce((sum, row) => sum + Number(row.value || 0) + Number(row.cash_amount || 0) - Number(row.cost || 0), 0)
   const investmentCostTotal = investments.reduce((sum, row) => sum + Number(row.cost || 0), 0)
   const totalRealized = Object.values(ownAccounts).reduce((sum, row) => sum + (row.realized_pnl_twd || 0), 0)
   const totalUnrealized =
@@ -182,11 +184,17 @@ export default function Dashboard() {
     <div className="grid gap-5">
       {/* Header */}
       <header>
-        <h1 className="text-2xl font-semibold">蔡加恩的金庫</h1>
+        <div className="flex items-start justify-between gap-3">
+          <h1 className="text-2xl font-semibold">蔡加恩的金庫</h1>
+          {summaryTime ? (
+            <div className="max-w-[11rem] text-right text-xs leading-tight text-slate-500">
+              {data.summary_cached ? '快取' : '更新'} {summaryTime}
+            </div>
+          ) : null}
+        </div>
         <div className="mt-1.5 flex items-center gap-2">
           <p className="flex-1 text-xs text-slate-400">
-            {today} · USD/TWD {data.usd_rate}
-            {summaryTime ? <span className="hidden sm:inline"> · {data.summary_cached ? '快取' : '更新'} {summaryTime}</span> : null}
+            {today} · USD/TWD {Number(data.usd_rate || 0).toFixed(2)}
           </p>
           <button
             type="button"
@@ -206,19 +214,23 @@ export default function Dashboard() {
             <span className="hidden sm:inline">刷新股價</span>
           </button>
         </div>
-        {summaryTime ? (
-          <p className="mt-0.5 text-xs text-slate-500 sm:hidden">
-            {data.summary_cached ? '快取' : '更新'} {summaryTime}
-          </p>
-        ) : null}
       </header>
 
       {/* 摘要卡片：手機 2×2，桌機一排 4 格 */}
-      <section className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
-        <SummaryCard compact label="我的總資產" value={money(data.own_total_assets || data.total_assets)} countTo={data.own_total_assets || data.total_assets} />
-        <SummaryCard compact label="投資市值" value={money(ownInvestmentTotal)} countTo={ownInvestmentTotal} />
-        <SummaryCard compact label="現金" value={money(ownCashTotal)} countTo={ownCashTotal} />
-        <SummaryCard compact label="投資用現金" value={money(investmentCashTotal)} countTo={investmentCashTotal} />
+      <section>
+        {!summaryExpanded ? (
+          <button type="button" onClick={() => setSummaryExpanded(true)} className="block w-full text-left sm:hidden">
+            <SummaryCard compact label="總資產" value={money(data.own_total_assets || data.total_assets)} countTo={data.own_total_assets || data.total_assets} />
+          </button>
+        ) : null}
+        <div className={`${summaryExpanded ? 'grid' : 'hidden'} grid-cols-2 gap-2 sm:grid sm:grid-cols-4 sm:gap-3`}>
+          <button type="button" onClick={() => setSummaryExpanded(false)} className="text-left sm:cursor-default" aria-label="收合總資產摘要">
+            <SummaryCard compact label="總資產" value={money(data.own_total_assets || data.total_assets)} countTo={data.own_total_assets || data.total_assets} />
+          </button>
+          <SummaryCard compact label="投資市值" value={money(ownInvestmentTotal)} countTo={ownInvestmentTotal} />
+          <SummaryCard compact label="現金" value={money(ownCashTotal)} countTo={ownCashTotal} />
+          <SummaryCard compact label="投資用現金" value={money(investmentCashTotal)} countTo={investmentCashTotal} />
+        </div>
       </section>
 
       {/* 圓餅圖：手機單張滑動 carousel，桌機 3 欄 grid */}
@@ -303,7 +315,7 @@ export default function Dashboard() {
           <div className="border-b border-line bg-panel px-4 py-3 text-sm font-medium">基金與其他投資</div>
           <div className="divide-y divide-line">
             {investments.map((row) => {
-              const pnl = Number(row.value || 0) - Number(row.cost || 0)
+              const pnl = Number(row.value || 0) + Number(row.cash_amount || 0) - Number(row.cost || 0)
               const roi = Number(row.cost || 0) > 0 ? pnl / Number(row.cost || 0) : null
               return (
                 <div key={row.id} className="grid grid-cols-[1fr_auto] gap-3 px-4 py-3">
@@ -312,7 +324,7 @@ export default function Dashboard() {
                     <div className="text-sm text-slate-400">{row.asset_type}</div>
                   </div>
                   <div className="text-right">
-                    <div>{hideAmounts ? maskAmount(money(row.value)) : money(row.value)}</div>
+                    <div>{hideAmounts ? maskAmount(money(Number(row.value || 0) + Number(row.cash_amount || 0))) : money(Number(row.value || 0) + Number(row.cash_amount || 0))}</div>
                     <div className={`text-sm ${pnlClass(pnl)}`}>
                       {hideAmounts ? percent(roi) : `${money(pnl)} / ${percent(roi)}`}
                     </div>

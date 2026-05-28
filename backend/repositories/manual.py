@@ -2,11 +2,21 @@ from database import get_supabase
 
 
 MANUAL_INVESTMENTS_MISSING = "manual_investments table is missing. Run backend/sql/migrations/20260511_manual_investments.sql in Supabase SQL Editor."
+MANUAL_INVESTMENT_OPTIONAL_COLUMNS = ["cash_amount"]
 
 
 def is_missing_manual_investments_error(exc: Exception) -> bool:
     message = str(exc)
     return "manual_investments" in message and ("PGRST205" in message or "Could not find the table" in message)
+
+
+def remove_unsupported_optional_columns(payload: dict, exc: Exception) -> bool:
+    message = str(exc)
+    for column in MANUAL_INVESTMENT_OPTIONAL_COLUMNS:
+        if column in payload and f"'{column}' column" in message:
+            payload.pop(column)
+            return True
+    return False
 
 
 def list_manual_values() -> list[dict]:
@@ -98,6 +108,7 @@ def list_manual_investments() -> list[dict]:
                 "name": "摩根新興科技",
                 "asset_type": "其他",
                 "cost": values.get("morgan_cost", 74000),
+                "cash_amount": 0,
                 "value": values.get("morgan_value", 0),
                 "currency": "TWD",
             },
@@ -106,6 +117,7 @@ def list_manual_investments() -> list[dict]:
                 "name": "野村高科技",
                 "asset_type": "其他",
                 "cost": values.get("nomura_cost", 47500),
+                "cash_amount": 0,
                 "value": values.get("nomura_value", 0),
                 "currency": "TWD",
             },
@@ -114,6 +126,7 @@ def list_manual_investments() -> list[dict]:
                 "name": "加密貨幣",
                 "asset_type": "其他",
                 "cost": values.get("crypto_cost", 68785),
+                "cash_amount": 0,
                 "value": values.get("crypto_value", 0),
                 "currency": "TWD",
             },
@@ -121,13 +134,17 @@ def list_manual_investments() -> list[dict]:
 
 
 def create_manual_investment(payload: dict) -> dict:
+    attempted_payload = dict(payload)
     try:
-        response = get_supabase().table("manual_investments").insert(payload).execute()
+        response = get_supabase().table("manual_investments").insert(attempted_payload).execute()
     except Exception as exc:
         if is_missing_manual_investments_error(exc):
             raise RuntimeError(MANUAL_INVESTMENTS_MISSING) from exc
+        if remove_unsupported_optional_columns(attempted_payload, exc):
+            response = get_supabase().table("manual_investments").insert(attempted_payload).execute()
+            return response.data[0] if response.data else attempted_payload
         raise
-    return response.data[0] if response.data else payload
+    return response.data[0] if response.data else attempted_payload
 
 
 def update_manual_investment(investment_id: str, payload: dict) -> dict:
@@ -143,6 +160,15 @@ def update_manual_investment(investment_id: str, payload: dict) -> dict:
     except Exception as exc:
         if is_missing_manual_investments_error(exc):
             raise RuntimeError(MANUAL_INVESTMENTS_MISSING) from exc
+        if remove_unsupported_optional_columns(clean, exc):
+            response = (
+                get_supabase()
+                .table("manual_investments")
+                .update(clean)
+                .eq("id", investment_id)
+                .execute()
+            )
+            return response.data[0] if response.data else {"id": investment_id, **clean}
         raise
     return response.data[0] if response.data else {"id": investment_id, **clean}
 

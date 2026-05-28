@@ -23,6 +23,7 @@ function ChartPanel({ title, data }) {
 }
 
 function AccountInvestedPanel({ values = [], onSaved }) {
+  const { hideAmounts } = usePrivacy()
   const [drafts, setDrafts] = useState({})
   const [open, setOpen] = useState(false)
   const map = useMemo(() => Object.fromEntries(values.map((item) => [item.key, item.value])), [values])
@@ -59,7 +60,7 @@ function AccountInvestedPanel({ values = [], onSaved }) {
               {account}
               <input
                 className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm text-white outline-none focus:border-sky-500"
-                type="number"
+                type={hideAmounts ? 'password' : 'number'}
                 value={drafts[key] ?? ''}
                 onChange={(event) => setDrafts((current) => ({ ...current, [key]: event.target.value }))}
                 onBlur={() => save(account)}
@@ -540,7 +541,7 @@ export default function Cash() {
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">現金</h1>
-          <p className="mt-1 text-sm text-slate-400">USD/TWD {usdRate}</p>
+          <p className="mt-1 text-sm text-slate-400">USD/TWD {Number(usdRate || 0).toFixed(2)}</p>
         </div>
       </header>
 
