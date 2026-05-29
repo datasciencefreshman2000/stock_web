@@ -151,6 +151,16 @@ export default function Dashboard() {
   const ownInvestedTotal =
     Object.values(ownAccounts).reduce((sum, row) => sum + Number(row.invested_twd || row.cost_twd || 0), 0) +
     investmentCostTotal
+  const totalAssets = data.own_total_assets || data.total_assets
+  const summaryCards = [
+    { key: 'total-assets', label: '總資產', value: money(totalAssets), countTo: totalAssets },
+    { key: 'investment-value', label: '投資市值', value: money(ownInvestmentTotal), countTo: ownInvestmentTotal },
+    { key: 'cash', label: '現金', value: money(ownCashTotal), countTo: ownCashTotal },
+    { key: 'investment-cash', label: '投資用現金', value: money(investmentCashTotal), countTo: investmentCashTotal },
+  ]
+  const toggleSummary = () => {
+    setSummaryExpanded((expanded) => !expanded)
+  }
 
   const pieCharts = [
     {
@@ -216,20 +226,31 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* 摘要卡片：手機 2×2，桌機一排 4 格 */}
+      {/* 摘要卡片：點擊可在總資產大卡與四格摘要間切換 */}
       <section>
         {!summaryExpanded ? (
-          <button type="button" onClick={() => setSummaryExpanded(true)} className="summary-single-enter relative block w-full text-left sm:hidden">
-            <SummaryCard hero label="總資產" value={money(data.own_total_assets || data.total_assets)} countTo={data.own_total_assets || data.total_assets} />
+          <button
+            type="button"
+            onClick={toggleSummary}
+            className="summary-single-enter relative block w-full text-left transition active:scale-[0.99]"
+            aria-expanded={summaryExpanded}
+          >
+            <SummaryCard hero label="總資產" value={money(totalAssets)} countTo={totalAssets} />
           </button>
         ) : null}
-        <div className={`${summaryExpanded ? 'summary-grid-enter grid' : 'hidden'} grid-cols-2 gap-2 sm:grid sm:grid-cols-4 sm:gap-3`}>
-          <button type="button" onClick={() => setSummaryExpanded(false)} className="relative text-left sm:cursor-default" aria-label="收合總資產摘要">
-            <SummaryCard compact label="總資產" value={money(data.own_total_assets || data.total_assets)} countTo={data.own_total_assets || data.total_assets} />
-          </button>
-          <SummaryCard compact label="投資市值" value={money(ownInvestmentTotal)} countTo={ownInvestmentTotal} />
-          <SummaryCard compact label="現金" value={money(ownCashTotal)} countTo={ownCashTotal} />
-          <SummaryCard compact label="投資用現金" value={money(investmentCashTotal)} countTo={investmentCashTotal} />
+        <div className={`${summaryExpanded ? 'summary-grid-enter grid' : 'hidden'} grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3`}>
+          {summaryCards.map((card) => (
+            <button
+              key={card.key}
+              type="button"
+              onClick={toggleSummary}
+              className="relative text-left transition active:scale-[0.99]"
+              aria-label="切換總資產摘要"
+              aria-expanded={summaryExpanded}
+            >
+              <SummaryCard compact label={card.label} value={card.value} countTo={card.countTo} />
+            </button>
+          ))}
         </div>
       </section>
 

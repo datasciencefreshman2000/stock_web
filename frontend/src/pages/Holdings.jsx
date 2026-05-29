@@ -13,18 +13,18 @@ import { useSummary } from '../hooks/useSummary'
 import { api } from '../api/client'
 import { money, percent, pnlClass } from '../utils/format'
 
-function MiniMetric({ label, value, accent, onClick }) {
+function MiniMetric({ label, value, accent, onClick, dense = false }) {
   const Component = onClick ? 'button' : 'div'
   return (
     <Component
       type={onClick ? 'button' : undefined}
       onClick={onClick}
-      className={`min-w-0 rounded-md border border-line bg-surface p-3 text-left transition ${
+      className={`min-w-0 rounded-md border border-line bg-surface text-left transition ${dense ? 'p-2.5' : 'p-3'} ${
         onClick ? 'active:scale-[0.99] hover:border-sky-500/60' : ''
       }`}
     >
-      <div className="text-xs text-slate-400">{label}</div>
-      <div className={`mt-1 truncate text-base font-semibold tabular-nums sm:text-lg ${accent || 'text-white'}`}>{value}</div>
+      <div className={dense ? 'text-[11px] text-slate-400' : 'text-xs text-slate-400'}>{label}</div>
+      <div className={`mt-1 truncate font-semibold tabular-nums ${dense ? 'text-sm sm:text-base' : 'text-base sm:text-lg'} ${accent || 'text-white'}`}>{value}</div>
     </Component>
   )
 }
@@ -96,6 +96,12 @@ export default function Holdings() {
     },
   ]
   const visibleMetricCards = metricsExpanded ? metricCards : metricCards.slice(0, 2)
+  const metricSectionClass = metricsExpanded
+    ? 'grid gap-3 lg:grid-cols-[1fr_0.72fr]'
+    : 'grid gap-3 lg:grid-cols-[minmax(0,1fr)_16rem] lg:items-start xl:grid-cols-[minmax(0,1fr)_18rem]'
+  const toggleMetrics = () => {
+    setMetricsExpanded((expanded) => !expanded)
+  }
 
   return (
     <div className="grid gap-5">
@@ -138,7 +144,7 @@ export default function Holdings() {
 
       {!active.loading && !active.error && !isManual ? (
         <>
-          <section className="grid gap-3 lg:grid-cols-[1fr_0.9fr]">
+          <section className={metricSectionClass}>
             <div className={`grid grid-cols-2 gap-3 ${metricsExpanded ? 'summary-grid-enter' : 'summary-single-enter'}`}>
               {visibleMetricCards.map((card) => (
                 <MiniMetric
@@ -146,11 +152,12 @@ export default function Holdings() {
                   label={card.label}
                   value={card.value}
                   accent={card.accent}
-                  onClick={() => (card.primary ? setMetricsExpanded(true) : setMetricsExpanded(false))}
+                  dense={!metricsExpanded}
+                  onClick={toggleMetrics}
                 />
               ))}
             </div>
-            <AssetPieChart title="現金與市值比例" data={allocation} />
+            <AssetPieChart title="現金與市值比例" data={allocation} dense={!metricsExpanded} />
           </section>
 
           <HoldingsTable holdings={portfolio.data.holdings || []} account={tab} currency={currency} />

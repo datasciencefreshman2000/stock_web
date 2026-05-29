@@ -225,7 +225,11 @@ export default function TradeForm({ onSubmit, submitting }) {
                 type="button"
                 onClick={() => update('side', side)}
                 className={`rounded-md border px-3 py-2 text-sm font-medium transition ${
-                  form.side === side ? 'border-sky-400 bg-sky-500/15 text-white' : 'border-line bg-[#0b1020] text-slate-300'
+                  form.side === side
+                    ? side === 'buy'
+                      ? 'border-emerald-400/70 bg-emerald-500/15 text-emerald-100'
+                      : 'border-rose-400/70 bg-rose-500/15 text-rose-100'
+                    : 'border-line bg-[#0b1020] text-slate-300'
                 }`}
               >
                 {label}

@@ -20,26 +20,29 @@ function pieLabel({ cx, cy, midAngle, innerRadius, outerRadius, percent }) {
   )
 }
 
-export default function AssetPieChart({ data, title = '資產分布', onItemClick, headerAction, compact = false }) {
+export default function AssetPieChart({ data, title = '資產分布', onItemClick, headerAction, compact = false, dense = false }) {
   const { hideAmounts } = usePrivacy()
   const [showLegend, setShowLegend] = useState(true)
   const rows = data.filter((item) => item.value > 0)
   const total = rows.reduce((sum, item) => sum + item.value, 0)
+  const chartHeight = dense ? 'h-32 sm:h-36 lg:h-28' : compact ? 'h-40' : 'h-48 sm:h-60'
+  const outerRadius = dense ? 54 : compact ? 66 : 82
+  const innerRadius = dense ? 34 : compact ? 42 : 52
   if (!rows.length) {
     return <div className="rounded-md border border-line bg-surface p-4 text-slate-400">{title}：沒有資料</div>
   }
 
   return (
-    <div className="min-w-0 overflow-hidden rounded-md border border-line bg-surface p-3">
-      <div className="mb-2 flex items-center justify-between gap-3">
+    <div className={`min-w-0 overflow-hidden rounded-md border border-line bg-surface ${dense ? 'p-2.5' : 'p-3'}`}>
+      <div className={`${dense ? 'mb-1' : 'mb-2'} flex items-center justify-between gap-3`}>
         <div className="min-w-0 text-sm font-medium leading-tight text-slate-200">{title}</div>
         {headerAction}
       </div>
-      <div className={`relative ${compact ? 'h-40' : 'h-48 sm:h-60'}`}>
+      <div className={`relative ${chartHeight}`}>
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
           <div className="text-center">
             <div className="text-xs text-slate-500">合計</div>
-            <div className={`${compact ? 'max-w-24 text-xs' : 'max-w-28 text-sm sm:max-w-none'} break-words font-semibold leading-tight text-white`}>
+            <div className={`${compact || dense ? 'max-w-24 text-xs' : 'max-w-28 text-sm sm:max-w-none'} break-words font-semibold leading-tight text-white`}>
               {hideAmounts ? maskAmount(money(total)) : money(total)}
             </div>
           </div>
@@ -50,8 +53,8 @@ export default function AssetPieChart({ data, title = '資產分布', onItemClic
               data={rows}
               dataKey="value"
               nameKey="name"
-              outerRadius={compact ? 66 : 82}
-              innerRadius={compact ? 42 : 52}
+              outerRadius={outerRadius}
+              innerRadius={innerRadius}
               label={pieLabel}
               labelLine={false}
               onClick={(item) => onItemClick?.(item.name)}
@@ -77,13 +80,15 @@ export default function AssetPieChart({ data, title = '資產分布', onItemClic
         </button>
       </div>
       {showLegend ? (
-        <div className="page-enter mt-2 grid gap-1.5 text-xs">
+        <div className={`page-enter mt-2 grid ${dense ? 'gap-1 text-[11px]' : 'gap-1.5 text-xs'}`}>
           {rows.map((item, index) => (
             <button
               key={item.name}
               type="button"
               onClick={() => onItemClick?.(item.name)}
-              className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_3.2rem_minmax(0,5.8rem)] items-center gap-2 rounded-md px-2 py-1.5 text-left text-slate-300 hover:bg-white/5"
+              className={`grid w-full min-w-0 grid-cols-[minmax(0,1fr)_3.2rem_minmax(0,5.8rem)] items-center gap-2 rounded-md px-2 text-left text-slate-300 hover:bg-white/5 ${
+                dense ? 'py-1' : 'py-1.5'
+              }`}
             >
               <span className="flex min-w-0 items-center gap-2">
                 <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: COLORS[index % COLORS.length] }} />

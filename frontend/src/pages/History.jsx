@@ -13,6 +13,20 @@ function dateValue(date) {
   return new Date(date.getTime() - offset * 60 * 1000).toISOString().slice(0, 10)
 }
 
+function TradeSideBadge({ isBuy }) {
+  return (
+    <span
+      className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${
+        isBuy
+          ? 'border-emerald-400/40 bg-emerald-500/15 text-emerald-100'
+          : 'border-rose-400/40 bg-rose-500/15 text-rose-100'
+      }`}
+    >
+      {isBuy ? '買入' : '賣出'}
+    </span>
+  )
+}
+
 export default function History() {
   const { hideAmounts } = usePrivacy()
   const [account, setAccount] = useState('台股')
@@ -103,7 +117,10 @@ export default function History() {
                     <div>
                       <div className="font-medium text-white">{trade.ticker}</div>
                       {trade.company_name ? <div className="text-xs text-slate-400">{trade.company_name}</div> : null}
-                      <div className="text-xs text-slate-400">{trade.date || '--'} · {isBuy ? '買入' : '賣出'}</div>
+                      <div className="mt-1 flex items-center gap-2 text-xs text-slate-400">
+                        <span>{trade.date || '--'}</span>
+                        <TradeSideBadge isBuy={isBuy} />
+                      </div>
                     </div>
                     <button className="rounded-md p-2 text-slate-400 hover:bg-panel hover:text-rose-300" onClick={() => remove(trade.id)}>
                       <Trash2 size={17} />
@@ -148,7 +165,9 @@ export default function History() {
                         <div className="font-medium text-white">{trade.ticker}</div>
                         {trade.company_name ? <div className="text-xs text-slate-400">{trade.company_name}</div> : null}
                       </td>
-                      <td className="px-4 py-3">{isBuy ? '買入' : '賣出'}</td>
+                      <td className="px-4 py-3">
+                        <TradeSideBadge isBuy={isBuy} />
+                      </td>
                       <td className="px-4 py-3 text-right">{number(qty, 4)}</td>
                       <td className="px-4 py-3 text-right">{hideAmounts ? '••••' : number(trade.price, 2)}</td>
                       <td className="px-4 py-3 text-slate-400">{trade.note}</td>
