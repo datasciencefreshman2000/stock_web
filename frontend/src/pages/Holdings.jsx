@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 
-import AssetPieChart from '../components/AssetPieChart'
 import HoldingsTable from '../components/HoldingsTable'
 import ManualValueEditor from '../components/ManualValueEditor'
 import PriceStatus from '../components/PriceStatus'
@@ -13,19 +12,55 @@ import { useSummary } from '../hooks/useSummary'
 import { api } from '../api/client'
 import { money, percent, pnlClass } from '../utils/format'
 
-function MiniMetric({ label, value, accent, onClick, dense = false }) {
+function MiniMetric({ label, value, accent, onClick, dense = false, emphasis = false }) {
   const Component = onClick ? 'button' : 'div'
   return (
     <Component
       type={onClick ? 'button' : undefined}
       onClick={onClick}
-      className={`min-w-0 rounded-md border border-line bg-surface text-left transition ${dense ? 'p-2.5' : 'p-3'} ${
+      className={`min-w-0 rounded-md border border-line bg-surface text-left transition ${
+        emphasis ? 'p-3.5 sm:p-4' : dense ? 'p-3' : 'p-3'
+      } ${
         onClick ? 'active:scale-[0.99] hover:border-sky-500/60' : ''
       }`}
     >
-      <div className={dense ? 'text-[11px] text-slate-400' : 'text-xs text-slate-400'}>{label}</div>
-      <div className={`mt-1 truncate font-semibold tabular-nums ${dense ? 'text-sm sm:text-base' : 'text-base sm:text-lg'} ${accent || 'text-white'}`}>{value}</div>
+      <div className={emphasis ? 'text-xs text-slate-400 sm:text-sm' : dense ? 'text-xs text-slate-400' : 'text-xs text-slate-400'}>{label}</div>
+      <div className={`mt-1 truncate font-semibold tabular-nums ${emphasis ? 'text-lg sm:text-2xl' : dense ? 'text-base sm:text-lg' : 'text-base sm:text-lg'} ${accent || 'text-white'}`}>{value}</div>
     </Component>
+  )
+}
+
+function StockCashBar({ stocks, cash, total, currency, hideAmounts }) {
+  const stockRatio = total > 0 ? stocks / total : 0
+  const cashRatio = total > 0 ? cash / total : 0
+
+  return (
+    <div className="summary-single-enter rounded-md border border-line bg-surface p-3">
+      <div className="mb-2 flex items-center justify-between gap-3 text-xs">
+        <span className="font-medium text-slate-300">股票 / 現金</span>
+        <span className="text-slate-500 tabular-nums">
+          股票 <span className="text-slate-200">{percent(stockRatio)}</span>
+          {' / '}
+          現金 <span className="text-slate-200">{percent(cashRatio)}</span>
+        </span>
+      </div>
+      <div className="flex h-2.5 overflow-hidden rounded-full bg-line">
+        <div className="bg-sky-400 transition-all" style={{ width: `${stockRatio * 100}%` }} />
+        <div className="bg-amber-400 transition-all" style={{ width: `${cashRatio * 100}%` }} />
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-3 text-xs">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="h-2 w-2 shrink-0 rounded-sm bg-sky-400" />
+          <span className="truncate text-slate-400">市值</span>
+          <span className="ml-auto truncate text-slate-200 tabular-nums">{hideAmounts ? maskAmount(money(stocks, currency)) : money(stocks, currency)}</span>
+        </div>
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="h-2 w-2 shrink-0 rounded-sm bg-amber-400" />
+          <span className="truncate text-slate-400">現金</span>
+          <span className="ml-auto truncate text-slate-200 tabular-nums">{hideAmounts ? maskAmount(money(cash, currency)) : money(cash, currency)}</span>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -49,10 +84,9 @@ export default function Holdings() {
   const pnlRatio = accountInvested > 0 ? totalPnl / accountInvested : null
   const unrealizedRatio = accountInvested > 0 ? Number(dashboard.unrealized_pnl || 0) / accountInvested : null
   const realizedRatio = accountInvested > 0 ? Number(dashboard.realized_pnl || 0) / accountInvested : null
-  const allocation = [
-    { name: '持股市值', value: Math.max(Number(dashboard.market_value || 0), 0) },
-    { name: '現金', value: Math.max(inferredCash, 0) },
-  ]
+  const stockValue = Math.max(Number(dashboard.market_value || 0), 0)
+  const cashValue = Math.max(inferredCash, 0)
+  const allocationTotal = stockValue + cashValue
 
   useEffect(() => {
     setMetricsExpanded(false)
@@ -95,10 +129,8 @@ export default function Holdings() {
       value: hideAmounts ? maskAmount(money(inferredCash, currency)) : money(inferredCash, currency),
     },
   ]
-  const visibleMetricCards = metricsExpanded ? metricCards : metricCards.slice(0, 2)
-  const metricSectionClass = metricsExpanded
-    ? 'grid gap-3 lg:grid-cols-[1fr_0.72fr]'
-    : 'grid gap-3 lg:grid-cols-[minmax(0,1fr)_16rem] lg:items-start xl:grid-cols-[minmax(0,1fr)_18rem]'
+  const primaryMetricCards = metricCards.slice(0, 2)
+  const detailMetricCards = metricsExpanded ? metricCards.slice(2) : []
   const toggleMetrics = () => {
     setMetricsExpanded((expanded) => !expanded)
   }
@@ -144,20 +176,34 @@ export default function Holdings() {
 
       {!active.loading && !active.error && !isManual ? (
         <>
-          <section className={metricSectionClass}>
-            <div className={`grid grid-cols-2 gap-3 ${metricsExpanded ? 'summary-grid-enter' : 'summary-single-enter'}`}>
-              {visibleMetricCards.map((card) => (
+          <section className="grid gap-3">
+            <div className="summary-single-enter grid grid-cols-2 gap-3">
+              {primaryMetricCards.map((card) => (
                 <MiniMetric
                   key={card.key}
                   label={card.label}
                   value={card.value}
                   accent={card.accent}
-                  dense={!metricsExpanded}
+                  emphasis
                   onClick={toggleMetrics}
                 />
               ))}
             </div>
-            <AssetPieChart title="現金與市值比例" data={allocation} dense={!metricsExpanded} />
+            <StockCashBar stocks={stockValue} cash={cashValue} total={allocationTotal} currency={currency} hideAmounts={hideAmounts} />
+            {detailMetricCards.length ? (
+              <div className="summary-grid-enter grid grid-cols-2 gap-3">
+                {detailMetricCards.map((card) => (
+                  <MiniMetric
+                    key={card.key}
+                    label={card.label}
+                    value={card.value}
+                    accent={card.accent}
+                    dense={!metricsExpanded}
+                    onClick={toggleMetrics}
+                  />
+                ))}
+              </div>
+            ) : null}
           </section>
 
           <HoldingsTable holdings={portfolio.data.holdings || []} account={tab} currency={currency} />
