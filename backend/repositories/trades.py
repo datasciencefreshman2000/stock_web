@@ -1,6 +1,9 @@
 from database import get_supabase
+from services.accounts import ACCOUNTS
 
 X_ACCOUNT_ALIASES = ["x", "X", "x配置(台股)", "X配置(台股)", "x台股", "X台股"]
+COMBINED_HISTORY_ACCOUNT = "__combined__"
+COMBINED_HISTORY_ACCOUNTS = ACCOUNTS[:3]
 
 
 def normalize_account(account: str | None) -> str | None:
@@ -12,6 +15,8 @@ def normalize_account(account: str | None) -> str | None:
 
 def account_filter_values(account: str) -> list[str]:
     normalized = normalize_account(account)
+    if normalized == COMBINED_HISTORY_ACCOUNT:
+        return COMBINED_HISTORY_ACCOUNTS
     return X_ACCOUNT_ALIASES if normalized == "x" else [normalized]
 
 

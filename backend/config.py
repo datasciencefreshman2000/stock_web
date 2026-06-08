@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     finnhub_key: str = ""
     fugle_api_key: str = ""
     cors_origins: str = "*"
+    cron_secret: str = ""
 
     model_config = SettingsConfigDict(
         env_file=(ROOT_DIR / ".env", BACKEND_DIR / ".env"),
