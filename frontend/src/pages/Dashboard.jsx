@@ -194,15 +194,14 @@ export default function Dashboard() {
     <div className="grid gap-5">
       {/* Header */}
       <header>
-        <div className="flex items-start justify-between gap-3">
-          <h1 className="text-2xl font-semibold">蔡加恩的金庫</h1>
-          {summaryTime ? (
+        {summaryTime ? (
+          <div className="flex justify-end">
             <div className="max-w-[11rem] text-right text-xs leading-tight text-slate-500">
               {data.summary_cached ? '快取' : '更新'} {summaryTime}
             </div>
-          ) : null}
-        </div>
-        <div className="mt-1.5 flex items-center gap-2">
+          </div>
+        ) : null}
+        <div className={`${summaryTime ? 'mt-1.5' : ''} flex items-center gap-2`}>
           <p className="flex-1 text-xs text-slate-400">
             {today} · USD/TWD {Number(data.usd_rate || 0).toFixed(2)}
           </p>
