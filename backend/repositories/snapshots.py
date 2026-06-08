@@ -1,4 +1,5 @@
 from datetime import date as Date
+from datetime import datetime, timezone
 
 from database import get_supabase
 from services.accounts import ACCOUNT_CURRENCY, ACCOUNTS
@@ -13,6 +14,7 @@ def number_value(value: object) -> float:
 
 def build_daily_snapshot_rows(summary: dict, snapshot_date: Date | None = None) -> list[dict]:
     date_value = (snapshot_date or Date.today()).isoformat()
+    updated_at = datetime.now(timezone.utc).isoformat()
     accounts = summary.get("accounts") or {}
     cash_by_account = (summary.get("cash") or {}).get("by_account") or {}
     rows = []
@@ -49,6 +51,7 @@ def build_daily_snapshot_rows(summary: dict, snapshot_date: Date | None = None) 
                     "cash_by_currency": cash_summary.get("by_currency") or {},
                 },
                 "payload": account_summary,
+                "updated_at": updated_at,
             }
         )
 
@@ -81,6 +84,7 @@ def build_daily_snapshot_rows(summary: dict, snapshot_date: Date | None = None) 
                 "usd_rate": number_value(summary.get("usd_rate")),
             },
             "payload": summary,
+            "updated_at": updated_at,
         }
     )
     return rows

@@ -1,4 +1,4 @@
-from datetime import date as Date
+from datetime import datetime, timedelta, timezone
 from secrets import compare_digest
 
 from fastapi import APIRouter, Header, HTTPException
@@ -9,6 +9,7 @@ from repositories.summary_cache import upsert_summary_cache
 from services.prices import get_price_status
 
 router = APIRouter()
+TAIPEI_TZ = timezone(timedelta(hours=8))
 
 
 def require_cron_secret(x_cron_secret: str | None) -> None:
@@ -41,10 +42,11 @@ async def refresh_all(x_cron_secret: str | None = Header(default=None, alias="X-
 async def snapshot_all(x_cron_secret: str | None = Header(default=None, alias="X-Cron-Secret")) -> dict:
     require_cron_secret(x_cron_secret)
     cached = await refresh_summary()
-    rows = upsert_daily_snapshots(cached, Date.today())
+    snapshot_date = datetime.now(TAIPEI_TZ).date()
+    rows = upsert_daily_snapshots(cached, snapshot_date)
     return {
         "ok": True,
-        "snapshot_date": Date.today().isoformat(),
+        "snapshot_date": snapshot_date.isoformat(),
         "rows": len(rows),
         "summary_cached_at": cached.get("summary_cached_at"),
         "price_status": get_price_status(),
