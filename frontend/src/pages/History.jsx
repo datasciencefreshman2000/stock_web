@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 
 import { api } from '../api/client'
@@ -56,6 +56,14 @@ function tradeAccountRatio(trade, accountSummaries, fallbackAccount) {
   return accountTotal > 0 && amount > 0 ? amount / accountTotal : null
 }
 
+function compareTradesNewestFirst(a, b) {
+  const dateCompare = String(b.date || '').localeCompare(String(a.date || ''))
+  if (dateCompare) return dateCompare
+  const createdCompare = String(b.created_at || '').localeCompare(String(a.created_at || ''))
+  if (createdCompare) return createdCompare
+  return String(b.id || '').localeCompare(String(a.id || ''))
+}
+
 function TradeSideBadge({ isBuy }) {
   return (
     <span
@@ -77,7 +85,7 @@ export default function History() {
   const { data, error, loading, reload } = useTrades(account, filters)
   const summary = useSummary()
   const accountSummaries = summary.data?.accounts || {}
-  const trades = data?.trades || []
+  const trades = useMemo(() => [...(data?.trades || [])].sort(compareTradesNewestFirst), [data?.trades])
 
   async function remove(id) {
     if (!window.confirm('確定刪除這筆交易？')) return
@@ -182,19 +190,19 @@ export default function History() {
               )
             })}
           </div>
-          <div className="hidden overflow-x-auto sm:block">
+          <div className="hidden max-h-[calc(100vh-220px)] overflow-auto sm:block">
             <table className="w-full min-w-[940px] text-left text-sm">
               <thead className="border-b border-line bg-panel text-slate-300">
                 <tr>
-                  <th className="px-4 py-3">日期</th>
-                  <th className="px-4 py-3">帳戶</th>
-                  <th className="px-4 py-3">代號</th>
-                  <th className="px-4 py-3">買賣</th>
-                  <th className="px-4 py-3 text-right">股數</th>
-                  <th className="px-4 py-3 text-right">價格</th>
-                  <th className="px-4 py-3 text-right">佔帳戶</th>
-                  <th className="px-4 py-3">備註</th>
-                  <th className="px-4 py-3"></th>
+                  <th className="sticky top-0 z-20 bg-panel px-4 py-3">日期</th>
+                  <th className="sticky top-0 z-20 bg-panel px-4 py-3">帳戶</th>
+                  <th className="sticky top-0 z-20 bg-panel px-4 py-3">代號</th>
+                  <th className="sticky top-0 z-20 bg-panel px-4 py-3">買賣</th>
+                  <th className="sticky top-0 z-20 bg-panel px-4 py-3 text-right">股數</th>
+                  <th className="sticky top-0 z-20 bg-panel px-4 py-3 text-right">價格</th>
+                  <th className="sticky top-0 z-20 bg-panel px-4 py-3 text-right">佔帳戶</th>
+                  <th className="sticky top-0 z-20 bg-panel px-4 py-3">備註</th>
+                  <th className="sticky top-0 z-20 bg-panel px-4 py-3"></th>
                 </tr>
               </thead>
               <tbody>

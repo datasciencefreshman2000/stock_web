@@ -168,12 +168,12 @@ export default function HoldingsTable({ holdings, account, currency = 'TWD' }) {
         />
       </div>
 
-      <div className={expanded ? 'overflow-x-auto' : 'hidden overflow-x-auto sm:block'}>
+      <div className={expanded ? 'max-h-[calc(100vh-220px)] overflow-auto' : 'hidden max-h-[calc(100vh-220px)] overflow-auto sm:block'}>
         <table className="w-full min-w-[760px] text-left text-sm">
           <thead className="border-b border-line bg-panel text-slate-300">
             <tr>
               {visibleColumns.map((column) => (
-                <th key={column.key} className={`px-4 py-3 ${column.align === 'left' ? '' : 'text-right'}`}>
+                <th key={column.key} className={`sticky top-0 z-20 bg-panel px-4 py-3 ${column.align === 'left' ? '' : 'text-right'}`}>
                   <button
                     type="button"
                     onClick={() => toggleSort(column.key)}
