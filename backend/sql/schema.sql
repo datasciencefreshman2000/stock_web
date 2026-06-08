@@ -70,9 +70,11 @@ values
   ('crypto_value', 17039.97)
 on conflict (key) do nothing;
 
-create table if not exists account_daily_snapshots (
+create table if not exists account_snapshots (
   id uuid primary key default gen_random_uuid(),
+  snapshot_at timestamptz not null,
   snapshot_date date not null,
+  snapshot_hour smallint not null check (snapshot_hour between 0 and 23),
   account text not null,
   currency text not null default 'TWD',
   account_total numeric not null default 0,
@@ -91,14 +93,17 @@ create table if not exists account_daily_snapshots (
   payload jsonb not null default '{}'::jsonb,
   created_at timestamptz default now(),
   updated_at timestamptz default now(),
-  unique (snapshot_date, account)
+  unique (snapshot_at, account)
 );
 
-create index if not exists idx_account_daily_snapshots_date
-  on account_daily_snapshots(snapshot_date desc);
+create index if not exists idx_account_snapshots_at
+  on account_snapshots(snapshot_at desc);
 
-create index if not exists idx_account_daily_snapshots_account_date
-  on account_daily_snapshots(account, snapshot_date desc);
+create index if not exists idx_account_snapshots_date
+  on account_snapshots(snapshot_date desc);
+
+create index if not exists idx_account_snapshots_account_at
+  on account_snapshots(account, snapshot_at desc);
 
 insert into manual_investments (name, asset_type, cost, value, currency)
 select

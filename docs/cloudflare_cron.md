@@ -5,12 +5,15 @@
 到 Supabase SQL Editor 執行：
 
 ```text
-backend/sql/migrations/20260609_account_daily_snapshots.sql
+backend/sql/migrations/20260609_account_snapshots.sql
 ```
 
-這會建立 `account_daily_snapshots`，每天會存：
+這會建立 `account_snapshots`，每小時會存：
 
 - 每個帳戶的總額
+- 快照時間 `snapshot_at`
+- 快照日期 `snapshot_date`
+- 快照小時 `snapshot_hour`
 - TWD 換算總額
 - 股票市值
 - 現金
@@ -30,7 +33,6 @@ CRON_SECRET=一組很長的隨機密碼
 部署後可以用這兩個 API：
 
 ```text
-POST https://stock-web-gamma.vercel.app/api/jobs/refresh
 POST https://stock-web-gamma.vercel.app/api/jobs/snapshot
 ```
 
@@ -66,13 +68,12 @@ CRON_SECRET=同一組 CRON_SECRET
 Cloudflare cron 是 UTC。
 
 新增兩個 trigger：
+新增一個 trigger：
 
 ```text
 0 * * * *
-10 16 * * *
 ```
 
 意思是：
 
-- 每小時整點刷新價格與 summary cache。
-- 每天 UTC 16:10，也就是台灣時間 00:10，寫入每日資產快照。
+- 每小時整點刷新價格與 summary cache，並寫入一筆 hourly asset snapshot。

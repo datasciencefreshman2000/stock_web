@@ -1,4 +1,3 @@
-from datetime import date as Date
 from datetime import datetime, timezone
 
 from database import get_supabase
@@ -12,8 +11,19 @@ def number_value(value: object) -> float:
         return 0.0
 
 
-def build_daily_snapshot_rows(summary: dict, snapshot_date: Date | None = None) -> list[dict]:
-    date_value = (snapshot_date or Date.today()).isoformat()
+def normalize_snapshot_time(snapshot_at: datetime | None = None) -> datetime:
+    value = snapshot_at or datetime.now(timezone.utc)
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    value = value.astimezone(timezone.utc)
+    return value.replace(minute=0, second=0, microsecond=0)
+
+
+def build_snapshot_rows(summary: dict, snapshot_at: datetime | None = None) -> list[dict]:
+    timestamp = normalize_snapshot_time(snapshot_at)
+    snapshot_at_value = timestamp.isoformat()
+    snapshot_date_value = timestamp.date().isoformat()
+    snapshot_hour = timestamp.hour
     updated_at = datetime.now(timezone.utc).isoformat()
     accounts = summary.get("accounts") or {}
     cash_by_account = (summary.get("cash") or {}).get("by_account") or {}
@@ -28,7 +38,9 @@ def build_daily_snapshot_rows(summary: dict, snapshot_date: Date | None = None) 
 
         rows.append(
             {
-                "snapshot_date": date_value,
+                "snapshot_at": snapshot_at_value,
+                "snapshot_date": snapshot_date_value,
+                "snapshot_hour": snapshot_hour,
                 "account": account,
                 "currency": ACCOUNT_CURRENCY.get(account, "TWD"),
                 "account_total": number_value(account_summary.get("account_total")),
@@ -59,7 +71,9 @@ def build_daily_snapshot_rows(summary: dict, snapshot_date: Date | None = None) 
     cash_total = number_value((summary.get("cash") or {}).get("twd_equivalent"))
     rows.append(
         {
-            "snapshot_date": date_value,
+            "snapshot_at": snapshot_at_value,
+            "snapshot_date": snapshot_date_value,
+            "snapshot_hour": snapshot_hour,
             "account": "__overall__",
             "currency": "TWD",
             "account_total": number_value(summary.get("total_assets")),
@@ -90,12 +104,12 @@ def build_daily_snapshot_rows(summary: dict, snapshot_date: Date | None = None) 
     return rows
 
 
-def upsert_daily_snapshots(summary: dict, snapshot_date: Date | None = None) -> list[dict]:
-    rows = build_daily_snapshot_rows(summary, snapshot_date)
+def upsert_snapshots(summary: dict, snapshot_at: datetime | None = None) -> list[dict]:
+    rows = build_snapshot_rows(summary, snapshot_at)
     response = (
         get_supabase()
-        .table("account_daily_snapshots")
-        .upsert(rows, on_conflict="snapshot_date,account")
+        .table("account_snapshots")
+        .upsert(rows, on_conflict="snapshot_at,account")
         .execute()
     )
     return response.data or rows

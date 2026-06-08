@@ -1,5 +1,3 @@
-const DAILY_SNAPSHOT_CRON = '10 16 * * *'
-
 async function callBackend(env, path) {
   const apiBase = (env.API_BASE || '').replace(/\/$/, '')
   if (!apiBase) throw new Error('API_BASE is not configured.')
@@ -17,14 +15,9 @@ async function callBackend(env, path) {
   return body
 }
 
-async function runCron(cron, env) {
-  if (cron === DAILY_SNAPSHOT_CRON) return callBackend(env, '/jobs/snapshot')
-  return callBackend(env, '/jobs/refresh')
-}
-
 export default {
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(runCron(event.cron, env))
+    ctx.waitUntil(callBackend(env, '/jobs/snapshot'))
   },
 
   async fetch(request, env) {
