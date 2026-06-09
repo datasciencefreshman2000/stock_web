@@ -36,7 +36,7 @@ def list_trades(
         query = query.gte("date", start_date)
     if end_date:
         query = query.lte("date", end_date)
-    response = query.order("date", desc=True).order("created_at", desc=True).execute()
+    response = query.order("date").order("created_at").execute()
     rows = response.data or []
     for row in rows:
         if row.get("ticker"):
