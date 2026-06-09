@@ -406,21 +406,22 @@ export default function History() {
                     <div className="flex shrink-0 gap-1">
                       <button
                         type="button"
-                        className="rounded-md p-2 text-slate-400 hover:bg-panel hover:text-sky-300"
+                        className="inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1.5 text-xs text-slate-300 hover:border-sky-500 hover:bg-panel hover:text-sky-200"
                         onClick={() => startEdit(trade)}
                         disabled={Boolean(savingId)}
                         title="修改"
                       >
-                        <Edit3 size={17} />
+                        <Edit3 size={14} />
+                        修改
                       </button>
                       <button
                         type="button"
-                        className="rounded-md p-2 text-slate-400 hover:bg-panel hover:text-rose-300"
+                        className="rounded-md border border-line p-1.5 text-slate-400 hover:border-rose-500 hover:bg-panel hover:text-rose-300"
                         onClick={() => remove(trade.id)}
                         disabled={Boolean(savingId)}
                         title="刪除"
                       >
-                        <Trash2 size={17} />
+                        <Trash2 size={16} />
                       </button>
                     </div>
                   </div>
@@ -512,21 +513,22 @@ export default function History() {
                         <div className="flex justify-end gap-1">
                           <button
                             type="button"
-                            className="rounded-md p-2 text-slate-400 hover:bg-panel hover:text-sky-300"
+                            className="inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1.5 text-xs text-slate-300 hover:border-sky-500 hover:bg-panel hover:text-sky-200"
                             onClick={() => startEdit(trade)}
                             disabled={Boolean(savingId)}
                             title="修改"
                           >
-                            <Edit3 size={18} />
+                            <Edit3 size={14} />
+                            修改
                           </button>
                           <button
                             type="button"
-                            className="rounded-md p-2 text-slate-400 hover:bg-panel hover:text-rose-300"
+                            className="rounded-md border border-line p-1.5 text-slate-400 hover:border-rose-500 hover:bg-panel hover:text-rose-300"
                             onClick={() => remove(trade.id)}
                             disabled={Boolean(savingId)}
                             title="刪除"
                           >
-                            <Trash2 size={18} />
+                            <Trash2 size={16} />
                           </button>
                         </div>
                       </td>
