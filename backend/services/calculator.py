@@ -37,6 +37,8 @@ async def build_holdings(account: str, trades: list[dict], prices: dict[str, flo
                 "pnl": pnl,
                 "pnl_pct": pnl_pct,
                 "weight": None,
+                "unmatched_sell_qty": result.get("unmatched_sell_qty", 0),
+                "unmatched_sell_value": result.get("unmatched_sell_value", 0),
             }
         )
 

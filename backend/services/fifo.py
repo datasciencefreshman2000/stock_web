@@ -12,33 +12,48 @@ class BuyLot:
     cost_per_share: float
 
 
+def trade_sort_key(trade: dict) -> tuple[str, int, str, str]:
+    is_sell = float(trade.get("sell_qty") or 0) > 0
+    return (
+        str(trade.get("date") or ""),
+        1 if is_sell else 0,
+        str(trade.get("created_at") or ""),
+        str(trade.get("id") or ""),
+    )
+
+
 def calc_fifo(trades: list[dict], account: str, ticker: str) -> dict:
     buy_lots: list[BuyLot] = []
-    current_qty = 0.0
+    unmatched_sell_balance = 0.0
+    unmatched_sell_qty = 0.0
+    unmatched_sell_value = 0.0
     total_cost = 0.0
     realized_pnl = 0.0
     total_fee = 0.0
     total_tax = 0.0
     is_tw = account in TW_ACCOUNTS
 
-    for trade in trades:
-        buy_qty = trade.get("buy_qty") or 0
-        sell_qty = trade.get("sell_qty") or 0
+    for trade in sorted(trades, key=trade_sort_key):
+        buy_qty = float(trade.get("buy_qty") or 0)
+        sell_qty = float(trade.get("sell_qty") or 0)
         price = float(trade["price"])
 
         if buy_qty > 0:
             fee = calc_tw_fee(price, buy_qty) if is_tw else float(trade.get("fee") or 0)
-            cost = float(buy_qty) * price
-            buy_lots.append(BuyLot(qty=float(buy_qty), cost_per_share=cost / float(buy_qty)))
-            current_qty += float(buy_qty)
-            total_cost += cost
             total_fee += fee
+            matched_gap_qty = min(buy_qty, unmatched_sell_balance)
+            unmatched_sell_balance -= matched_gap_qty
+            long_qty = buy_qty - matched_gap_qty
+            if long_qty > EPSILON:
+                cost = long_qty * price
+                buy_lots.append(BuyLot(qty=long_qty, cost_per_share=price))
+                total_cost += cost
 
         if sell_qty > 0:
             fee = calc_tw_fee(price, sell_qty) if is_tw else float(trade.get("fee") or 0)
             tax = calc_tw_tax(price, sell_qty, ticker) if is_tw else 0
-            revenue = price * float(sell_qty) - fee - tax
-            remaining = float(sell_qty)
+            remaining = sell_qty
+            matched_qty = 0.0
             cost_of_sold = 0.0
 
             while remaining > EPSILON and buy_lots:
@@ -47,15 +62,23 @@ def calc_fifo(trades: list[dict], account: str, ticker: str) -> dict:
                 cost_of_sold += qty * lot.cost_per_share
                 lot.qty -= qty
                 remaining -= qty
+                matched_qty += qty
                 if lot.qty < EPSILON:
                     buy_lots.pop(0)
 
-            current_qty -= float(sell_qty)
             total_cost -= cost_of_sold
-            realized_pnl += revenue - cost_of_sold
+            if matched_qty > EPSILON:
+                matched_ratio = matched_qty / sell_qty
+                revenue = price * matched_qty - fee * matched_ratio - tax * matched_ratio
+                realized_pnl += revenue - cost_of_sold
+            if remaining > EPSILON:
+                unmatched_sell_balance += remaining
+                unmatched_sell_qty += remaining
+                unmatched_sell_value += remaining * price
             total_fee += fee
             total_tax += tax
 
+    current_qty = sum(lot.qty for lot in buy_lots)
     if abs(current_qty) < EPSILON:
         current_qty = 0
         total_cost = 0
@@ -68,4 +91,6 @@ def calc_fifo(trades: list[dict], account: str, ticker: str) -> dict:
         "realized_pnl": realized_pnl,
         "total_fee": total_fee,
         "total_tax": total_tax,
+        "unmatched_sell_qty": unmatched_sell_qty,
+        "unmatched_sell_value": unmatched_sell_value,
     }
