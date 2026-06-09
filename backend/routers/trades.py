@@ -1,14 +1,26 @@
 from fastapi import APIRouter, Query
 
 from config import get_settings
-from models import TradeCreate
+from models import TradeCreate, TradeUpdate
 from repositories.summary_cache import clear_summary_cache
-from repositories.trades import COMBINED_HISTORY_ACCOUNT, create_trade, delete_trade, list_trades
+from repositories.trades import COMBINED_HISTORY_ACCOUNT, create_trade, delete_trade, list_trades, update_trade
 from services.constants import TW_ACCOUNTS
 from services.fees import calc_tw_fee
 from services.prices import fetch_fugle_company_names_batch
 
 router = APIRouter()
+
+
+def prepare_trade_payload(payload: dict) -> dict:
+    qty = payload.get("buy_qty") or payload.get("sell_qty") or 0
+    if payload["account"] in TW_ACCOUNTS and not payload.get("fee"):
+        payload["fee"] = calc_tw_fee(payload["price"], qty)
+    payload["total"] = (
+        payload["price"] * qty + payload["fee"]
+        if payload.get("buy_qty")
+        else payload["price"] * qty - payload["fee"]
+    )
+    return payload
 
 
 @router.get("/{account}/ticker/{ticker}")
@@ -54,14 +66,18 @@ async def get_trades(
 
 @router.post("")
 def add_trade(trade: TradeCreate) -> dict:
-    payload = trade.model_dump(mode="json")
-    qty = payload.get("buy_qty") or payload.get("sell_qty") or 0
-    if payload["account"] in TW_ACCOUNTS and not payload.get("fee"):
-        payload["fee"] = calc_tw_fee(payload["price"], qty)
-    payload["total"] = payload["price"] * qty + payload["fee"] if payload.get("buy_qty") else payload["price"] * qty - payload["fee"]
+    payload = prepare_trade_payload(trade.model_dump(mode="json"))
     created = create_trade(payload)
     clear_summary_cache()
     return {"success": True, "trade": created}
+
+
+@router.patch("/{trade_id}")
+def patch_trade(trade_id: str, trade: TradeUpdate) -> dict:
+    payload = prepare_trade_payload(trade.model_dump(mode="json"))
+    updated = update_trade(trade_id, payload)
+    clear_summary_cache()
+    return {"success": True, "trade": updated}
 
 
 @router.delete("/{trade_id}")

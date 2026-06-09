@@ -53,5 +53,14 @@ def create_trade(payload: dict) -> dict:
     return response.data[0] if response.data else payload
 
 
+def update_trade(trade_id: str, payload: dict) -> dict:
+    if payload.get("account"):
+        payload["account"] = normalize_account(payload["account"])
+    if payload.get("ticker"):
+        payload["ticker"] = payload["ticker"].strip().upper()
+    response = get_supabase().table("trades").update(payload).eq("id", trade_id).execute()
+    return response.data[0] if response.data else {"id": trade_id, **payload}
+
+
 def delete_trade(trade_id: str) -> None:
     get_supabase().table("trades").delete().eq("id", trade_id).execute()

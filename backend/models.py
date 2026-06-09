@@ -46,6 +46,10 @@ class TradeCreate(BaseModel):
         return self
 
 
+class TradeUpdate(TradeCreate):
+    pass
+
+
 class Holding(BaseModel):
     ticker: str
     qty: float

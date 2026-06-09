@@ -36,6 +36,8 @@ export const api = {
   getTickerInfo: (account, ticker) =>
     request(`/trades/${encodeURIComponent(account)}/ticker/${encodeURIComponent(ticker)}`),
   addTrade: (data) => request('/trades', { method: 'POST', body: JSON.stringify(data) }),
+  updateTrade: (id, data) =>
+    request(`/trades/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   deleteTrade: (id) => request(`/trades/${id}`, { method: 'DELETE' }),
   getManual: () => request('/manual'),
   updateManualValue: (key, value) =>

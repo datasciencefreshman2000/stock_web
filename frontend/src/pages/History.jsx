@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Trash2 } from 'lucide-react'
+import { Edit3, Save, Trash2, X } from 'lucide-react'
 
 import { api } from '../api/client'
 import { ErrorBlock, LoadingBlock } from '../components/StateBlock'
@@ -78,10 +78,187 @@ function TradeSideBadge({ isBuy }) {
   )
 }
 
+function tradeFormFromTrade(trade, fallbackAccount) {
+  const isBuy = Number(trade.buy_qty || 0) > 0
+  const fallback = fallbackAccount === COMBINED_HISTORY_ACCOUNT ? ACCOUNTS[0] : fallbackAccount
+  return {
+    account: trade.account || fallback,
+    ticker: trade.ticker || '',
+    date: trade.date || dateValue(new Date()),
+    side: isBuy ? 'buy' : 'sell',
+    qty: tradeQty(trade) ? String(tradeQty(trade)) : '',
+    price: trade.price === null || trade.price === undefined ? '' : String(trade.price),
+    fee: trade.fee === null || trade.fee === undefined ? '' : String(trade.fee || ''),
+    note: trade.note || '',
+  }
+}
+
+function isTwTradeForm(form) {
+  return form.account === ACCOUNTS[0] || form.account === ACCOUNTS[3]
+}
+
+function tradePayloadFromForm(form) {
+  const qty = Number(form.qty)
+  return {
+    account: form.account,
+    ticker: form.ticker.trim().toUpperCase(),
+    date: form.date,
+    buy_qty: form.side === 'buy' ? qty : null,
+    sell_qty: form.side === 'sell' ? qty : null,
+    price: Number(form.price),
+    fee: isTwTradeForm(form) ? 0 : Number(form.fee || 0),
+    note: form.note,
+  }
+}
+
+function TradeEditForm({ form, onChange, onSubmit, onCancel, saving, hideAmounts }) {
+  const isTw = isTwTradeForm(form)
+
+  return (
+    <form onSubmit={onSubmit} className="grid gap-3 rounded-md border border-sky-500/40 bg-panel/70 p-3">
+      <div className="grid gap-2 sm:grid-cols-[0.9fr_0.9fr_1fr_0.9fr_0.8fr_0.8fr]">
+        <label className="grid gap-1 text-xs text-slate-400">
+          帳戶
+          <select
+            className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm text-white"
+            value={form.account}
+            onChange={(event) => onChange('account', event.target.value)}
+            disabled={saving}
+          >
+            {ACCOUNTS.map((account) => (
+              <option key={account} value={account}>{account}</option>
+            ))}
+          </select>
+        </label>
+        <label className="grid gap-1 text-xs text-slate-400">
+          代號
+          <input
+            className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm text-white"
+            value={form.ticker}
+            onChange={(event) => onChange('ticker', event.target.value.toUpperCase())}
+            disabled={saving}
+            required
+          />
+        </label>
+        <label className="grid gap-1 text-xs text-slate-400">
+          日期
+          <input
+            className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm text-white"
+            type="date"
+            value={form.date}
+            onChange={(event) => onChange('date', event.target.value)}
+            disabled={saving}
+            required
+          />
+        </label>
+        <div className="grid gap-1 text-xs text-slate-400">
+          <span>買賣</span>
+          <div className="grid grid-cols-2 gap-1">
+            {[
+              ['buy', '買'],
+              ['sell', '賣'],
+            ].map(([side, label]) => (
+              <button
+                key={side}
+                type="button"
+                onClick={() => onChange('side', side)}
+                disabled={saving}
+                className={`rounded-md border px-2 py-2 text-sm font-medium ${
+                  form.side === side
+                    ? side === 'buy'
+                      ? 'border-emerald-400/70 bg-emerald-500/15 text-emerald-100'
+                      : 'border-rose-400/70 bg-rose-500/15 text-rose-100'
+                    : 'border-line bg-[#0b1020] text-slate-300'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <label className="grid gap-1 text-xs text-slate-400">
+          股數
+          <input
+            className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm text-white"
+            type="number"
+            min="0"
+            step="0.0001"
+            value={form.qty}
+            onChange={(event) => onChange('qty', event.target.value)}
+            disabled={saving}
+            required
+          />
+        </label>
+        <label className="grid gap-1 text-xs text-slate-400">
+          價格
+          <input
+            className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm text-white"
+            type={hideAmounts ? 'password' : 'number'}
+            min="0"
+            step="0.0001"
+            value={form.price}
+            onChange={(event) => onChange('price', event.target.value)}
+            disabled={saving}
+            required
+          />
+        </label>
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-[0.8fr_minmax(0,1fr)_auto] sm:items-end">
+        <label className="grid gap-1 text-xs text-slate-400">
+          手續費
+          <input
+            className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm text-white disabled:text-slate-500"
+            type={hideAmounts ? 'password' : 'number'}
+            min="0"
+            step="0.01"
+            value={isTw ? '' : form.fee}
+            placeholder={isTw ? '自動' : '0'}
+            onChange={(event) => onChange('fee', event.target.value)}
+            disabled={saving || isTw}
+          />
+        </label>
+        <label className="grid gap-1 text-xs text-slate-400">
+          備註
+          <input
+            className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm text-white"
+            value={form.note}
+            onChange={(event) => onChange('note', event.target.value)}
+            disabled={saving}
+          />
+        </label>
+        <div className="flex justify-end gap-2">
+          <button
+            type="submit"
+            disabled={saving}
+            className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/70 bg-emerald-500/15 px-3 py-2 text-sm text-emerald-100 disabled:opacity-50"
+          >
+            <Save size={15} />
+            儲存
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={saving}
+            className="inline-flex items-center gap-1.5 rounded-md border border-line px-3 py-2 text-sm text-slate-300 hover:border-sky-500 hover:text-white disabled:opacity-50"
+          >
+            <X size={15} />
+            取消
+          </button>
+        </div>
+      </div>
+    </form>
+  )
+}
+
 export default function History() {
   const { hideAmounts } = usePrivacy()
   const [account, setAccount] = useState(ACCOUNTS[0])
   const [filters, setFilters] = useState(() => ({ ticker: '', ...rangeFilters('7d') }))
+  const [editingId, setEditingId] = useState('')
+  const [editForm, setEditForm] = useState(null)
+  const [savingId, setSavingId] = useState('')
+  const [actionError, setActionError] = useState('')
   const { data, error, loading, reload } = useTrades(account, filters)
   const summary = useSummary()
   const accountSummaries = summary.data?.accounts || {}
@@ -89,8 +266,58 @@ export default function History() {
 
   async function remove(id) {
     if (!window.confirm('確定刪除這筆交易？')) return
-    await api.deleteTrade(id)
-    reload()
+    setActionError('')
+    try {
+      await api.deleteTrade(id)
+      if (editingId === id) {
+        setEditingId('')
+        setEditForm(null)
+      }
+      reload()
+      summary.reload()
+    } catch (err) {
+      setActionError(err.message || '刪除失敗')
+    }
+  }
+
+  function startEdit(trade) {
+    setActionError('')
+    setEditingId(trade.id)
+    setEditForm(tradeFormFromTrade(trade, account))
+  }
+
+  function cancelEdit() {
+    setEditingId('')
+    setEditForm(null)
+  }
+
+  function updateEdit(key, value) {
+    setEditForm((current) => ({ ...current, [key]: value }))
+  }
+
+  async function saveEdit(event) {
+    event.preventDefault()
+    if (!editingId || !editForm) return
+    const qty = Number(editForm.qty)
+    const price = Number(editForm.price)
+    if (!editForm.account || !editForm.ticker.trim() || !editForm.date || qty <= 0 || price <= 0) {
+      setActionError('請確認帳戶、代號、日期、股數與價格都有填寫。')
+      return
+    }
+
+    setSavingId(editingId)
+    setActionError('')
+    try {
+      await api.updateTrade(editingId, tradePayloadFromForm(editForm))
+      setEditingId('')
+      setEditForm(null)
+      await reload()
+      summary.reload()
+    } catch (err) {
+      setActionError(err.message || '儲存失敗')
+    } finally {
+      setSavingId('')
+    }
   }
 
   function setRange(type) {
@@ -106,7 +333,14 @@ export default function History() {
       <section className="grid gap-3 rounded-md border border-line bg-surface p-4 sm:grid-cols-4">
         <label className="grid gap-2 text-sm">
           帳戶
-          <select className="rounded-md border border-line bg-[#0b1020] px-3 py-2" value={account} onChange={(e) => setAccount(e.target.value)}>
+          <select
+            className="rounded-md border border-line bg-[#0b1020] px-3 py-2"
+            value={account}
+            onChange={(e) => {
+              cancelEdit()
+              setAccount(e.target.value)
+            }}
+          >
             {HISTORY_ACCOUNT_OPTIONS.map((item) => (
               <option key={item.value} value={item.value}>{item.label}</option>
             ))}
@@ -147,6 +381,7 @@ export default function History() {
 
       {loading ? <LoadingBlock label="正在讀取交易紀錄" /> : null}
       {error ? <ErrorBlock error={error} /> : null}
+      {actionError ? <div className="rounded-md border border-rose-900/60 bg-rose-950/40 px-4 py-3 text-sm text-rose-200">{actionError}</div> : null}
 
       {!loading && !error ? (
         <div className="overflow-hidden rounded-md border border-line bg-surface">
@@ -155,6 +390,7 @@ export default function History() {
               const isBuy = Number(trade.buy_qty || 0) > 0
               const qty = tradeQty(trade)
               const ratio = tradeAccountRatio(trade, accountSummaries, account)
+              const isEditing = editingId === trade.id
               return (
                 <div key={trade.id} className="px-3 py-3">
                   <div className="mb-2 flex items-start justify-between gap-3">
@@ -167,25 +403,55 @@ export default function History() {
                         <TradeSideBadge isBuy={isBuy} />
                       </div>
                     </div>
-                    <button className="rounded-md p-2 text-slate-400 hover:bg-panel hover:text-rose-300" onClick={() => remove(trade.id)}>
-                      <Trash2 size={17} />
-                    </button>
+                    <div className="flex shrink-0 gap-1">
+                      <button
+                        type="button"
+                        className="rounded-md p-2 text-slate-400 hover:bg-panel hover:text-sky-300"
+                        onClick={() => startEdit(trade)}
+                        disabled={Boolean(savingId)}
+                        title="修改"
+                      >
+                        <Edit3 size={17} />
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-md p-2 text-slate-400 hover:bg-panel hover:text-rose-300"
+                        onClick={() => remove(trade.id)}
+                        disabled={Boolean(savingId)}
+                        title="刪除"
+                      >
+                        <Trash2 size={17} />
+                      </button>
+                    </div>
                   </div>
-                  <div className="grid grid-cols-3 gap-2 text-xs">
-                    <div>
-                      <div className="text-slate-400">數量</div>
-                      <div className="text-slate-100">{hideAmounts ? MASKED_VALUE : number(qty, 4)}</div>
-                    </div>
-                    <div>
-                      <div className="text-slate-400">價格</div>
-                      <div className="text-slate-100">{hideAmounts ? MASKED_VALUE : number(trade.price, 2)}</div>
-                    </div>
-                    <div>
-                      <div className="text-slate-400">佔帳戶</div>
-                      <div className="text-slate-100">{percent(ratio)}</div>
-                    </div>
-                  </div>
-                  {trade.note ? <div className="mt-2 text-xs text-slate-500">{trade.note}</div> : null}
+                  {isEditing && editForm ? (
+                    <TradeEditForm
+                      form={editForm}
+                      onChange={updateEdit}
+                      onSubmit={saveEdit}
+                      onCancel={cancelEdit}
+                      saving={savingId === trade.id}
+                      hideAmounts={hideAmounts}
+                    />
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-3 gap-2 text-xs">
+                        <div>
+                          <div className="text-slate-400">數量</div>
+                          <div className="text-slate-100">{hideAmounts ? MASKED_VALUE : number(qty, 4)}</div>
+                        </div>
+                        <div>
+                          <div className="text-slate-400">價格</div>
+                          <div className="text-slate-100">{hideAmounts ? MASKED_VALUE : number(trade.price, 2)}</div>
+                        </div>
+                        <div>
+                          <div className="text-slate-400">佔帳戶</div>
+                          <div className="text-slate-100">{percent(ratio)}</div>
+                        </div>
+                      </div>
+                      {trade.note ? <div className="mt-2 text-xs text-slate-500">{trade.note}</div> : null}
+                    </>
+                  )}
                 </div>
               )
             })}
@@ -210,6 +476,23 @@ export default function History() {
                   const isBuy = Number(trade.buy_qty || 0) > 0
                   const qty = tradeQty(trade)
                   const ratio = tradeAccountRatio(trade, accountSummaries, account)
+                  const isEditing = editingId === trade.id
+                  if (isEditing && editForm) {
+                    return (
+                      <tr key={trade.id} className="border-b border-line/70 last:border-0">
+                        <td colSpan={9} className="px-4 py-3">
+                          <TradeEditForm
+                            form={editForm}
+                            onChange={updateEdit}
+                            onSubmit={saveEdit}
+                            onCancel={cancelEdit}
+                            saving={savingId === trade.id}
+                            hideAmounts={hideAmounts}
+                          />
+                        </td>
+                      </tr>
+                    )
+                  }
                   return (
                     <tr key={trade.id} className="border-b border-line/70 last:border-0">
                       <td className="px-4 py-3">{trade.date || '--'}</td>
@@ -226,9 +509,26 @@ export default function History() {
                       <td className="px-4 py-3 text-right">{percent(ratio)}</td>
                       <td className="px-4 py-3 text-slate-400">{trade.note}</td>
                       <td className="px-4 py-3 text-right">
-                        <button className="rounded-md p-2 text-slate-400 hover:bg-panel hover:text-rose-300" onClick={() => remove(trade.id)}>
-                          <Trash2 size={18} />
-                        </button>
+                        <div className="flex justify-end gap-1">
+                          <button
+                            type="button"
+                            className="rounded-md p-2 text-slate-400 hover:bg-panel hover:text-sky-300"
+                            onClick={() => startEdit(trade)}
+                            disabled={Boolean(savingId)}
+                            title="修改"
+                          >
+                            <Edit3 size={18} />
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded-md p-2 text-slate-400 hover:bg-panel hover:text-rose-300"
+                            onClick={() => remove(trade.id)}
+                            disabled={Boolean(savingId)}
+                            title="刪除"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   )
