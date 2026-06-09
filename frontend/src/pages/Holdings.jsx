@@ -8,7 +8,6 @@ import { ACCOUNT_TABS } from '../constants'
 import { maskAmount, usePrivacy } from '../context/PrivacyContext'
 import { useAsync } from '../hooks/useAsync'
 import { usePortfolio } from '../hooks/usePortfolio'
-import { useSummary } from '../hooks/useSummary'
 import { api } from '../api/client'
 import { money, percent, pnlClass } from '../utils/format'
 
@@ -72,7 +71,6 @@ export default function Holdings() {
   const isManual = tab === ACCOUNT_TABS[3]
   const portfolio = usePortfolio(isManual ? ACCOUNT_TABS[0] : tab, refreshToken)
   const manual = useAsync(() => api.getManual(), [])
-  const summary = useSummary(0)
 
   const active = isManual ? manual : portfolio
   const currency = tab === ACCOUNT_TABS[1] || tab === ACCOUNT_TABS[2] ? 'USD' : 'TWD'
@@ -171,7 +169,7 @@ export default function Holdings() {
       {active.error ? <ErrorBlock error={active.error} /> : null}
 
       {!active.loading && !active.error && isManual ? (
-        <ManualValueEditor investments={manual.data?.investments || []} usdRate={summary.data?.usd_rate || 31.316} onSaved={manual.reload} />
+        <ManualValueEditor investments={manual.data?.investments || []} onSaved={manual.reload} />
       ) : null}
 
       {!active.loading && !active.error && !isManual ? (

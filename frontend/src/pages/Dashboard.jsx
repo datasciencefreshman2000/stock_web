@@ -69,6 +69,26 @@ function CashRatioSection({ ownAccounts, hideAmounts }) {
   )
 }
 
+function investmentValueTwd(row) {
+  return Number(row.value_twd ?? row.value ?? 0)
+}
+
+function investmentCashTwd(row) {
+  return Number(row.cash_amount_twd ?? row.cash_amount ?? 0)
+}
+
+function investmentCostTwd(row) {
+  return Number(row.cost_twd ?? row.cost ?? 0)
+}
+
+function investmentTotalTwd(row) {
+  return Number(row.total_value_twd ?? investmentValueTwd(row) + investmentCashTwd(row))
+}
+
+function investmentPnlTwd(row) {
+  return Number(row.pnl_twd ?? investmentTotalTwd(row) - investmentCostTwd(row))
+}
+
 export default function Dashboard() {
   const [refreshToken, setRefreshToken] = useState(0)
   const [selectedInvestmentGroup, setSelectedInvestmentGroup] = useState(null)
@@ -105,7 +125,7 @@ export default function Dashboard() {
   const manualInvestmentCashTotal = data.manual_investment_cash_total || 0
   const investmentsByType = investments.reduce((acc, row) => {
     const key = row.asset_type || '其他'
-    acc[key] = (acc[key] || 0) + Number(row.value || 0)
+    acc[key] = (acc[key] || 0) + investmentValueTwd(row)
     return acc
   }, {})
   const ownCashTotal = data.cash?.twd_equivalent || 0
@@ -131,7 +151,7 @@ export default function Dashboard() {
       : null,
     ...investments
       .filter((row) => (row.asset_type || '其他') === selectedInvestmentGroup)
-      .map((row) => ({ name: row.name, value: Number(row.value || 0) })),
+      .map((row) => ({ name: row.name, value: investmentValueTwd(row) })),
   ].filter(Boolean)
     : []
   const investmentChartRows = selectedInvestmentGroup ? investmentDetails : chartData
@@ -143,8 +163,8 @@ export default function Dashboard() {
     { name: '投資', value: ownInvestmentTotal + investmentCashTotal },
     { name: '現金', value: ownCashTotal },
   ]
-  const investmentPnlTotal = investments.reduce((sum, row) => sum + Number(row.value || 0) + Number(row.cash_amount || 0) - Number(row.cost || 0), 0)
-  const investmentCostTotal = investments.reduce((sum, row) => sum + Number(row.cost || 0), 0)
+  const investmentPnlTotal = investments.reduce((sum, row) => sum + investmentPnlTwd(row), 0)
+  const investmentCostTotal = investments.reduce((sum, row) => sum + investmentCostTwd(row), 0)
   const totalRealized = Object.values(ownAccounts).reduce((sum, row) => sum + (row.realized_pnl_twd || 0), 0)
   const totalUnrealized =
     Object.values(ownAccounts).reduce((sum, row) => sum + (row.unrealized_pnl_twd || 0), 0) + investmentPnlTotal
@@ -335,18 +355,21 @@ export default function Dashboard() {
           <div className="border-b border-line bg-panel px-4 py-3 text-sm font-medium">基金與其他投資</div>
           <div className="divide-y divide-line">
             {investments.map((row) => {
-              const pnl = Number(row.value || 0) + Number(row.cash_amount || 0) - Number(row.cost || 0)
-              const roi = Number(row.cost || 0) > 0 ? pnl / Number(row.cost || 0) : null
+              const currency = row.currency || 'TWD'
+              const cost = Number(row.cost || 0)
+              const total = Number(row.value || 0) + Number(row.cash_amount || 0)
+              const pnl = total - cost
+              const roi = cost > 0 ? pnl / cost : null
               return (
                 <div key={row.id} className="grid grid-cols-[1fr_auto] gap-3 px-4 py-3">
                   <div>
                     <div className="font-medium">{row.name}</div>
-                    <div className="text-sm text-slate-400">{row.asset_type}</div>
+                    <div className="text-sm text-slate-400">{row.asset_type} · {currency}</div>
                   </div>
                   <div className="text-right">
-                    <div>{hideAmounts ? maskAmount(money(Number(row.value || 0) + Number(row.cash_amount || 0))) : money(Number(row.value || 0) + Number(row.cash_amount || 0))}</div>
+                    <div>{hideAmounts ? maskAmount(money(total, currency)) : money(total, currency)}</div>
                     <div className={`text-sm ${pnlClass(pnl)}`}>
-                      {hideAmounts ? percent(roi) : `${money(pnl)} / ${percent(roi)}`}
+                      {hideAmounts ? percent(roi) : `${money(pnl, currency)} / ${percent(roi)}`}
                     </div>
                   </div>
                 </div>

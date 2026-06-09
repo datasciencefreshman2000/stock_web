@@ -14,6 +14,29 @@ from services.prices import fetch_prices_batch, fetch_usd_rate, get_price_status
 router = APIRouter()
 
 
+def investment_amount_twd(row: dict, key: str, usd_rate: float) -> float:
+    amount = float(row.get(key) or 0)
+    currency = row.get("currency") or "TWD"
+    return amount * usd_rate if currency == "USD" else amount
+
+
+def enrich_manual_investment(row: dict, usd_rate: float) -> dict:
+    currency = row.get("currency") or "TWD"
+    cost_twd = investment_amount_twd(row, "cost", usd_rate)
+    value_twd = investment_amount_twd(row, "value", usd_rate)
+    cash_amount_twd = investment_amount_twd(row, "cash_amount", usd_rate)
+    total_value_twd = value_twd + cash_amount_twd
+    return {
+        **row,
+        "currency": currency,
+        "cost_twd": cost_twd,
+        "value_twd": value_twd,
+        "cash_amount_twd": cash_amount_twd,
+        "total_value_twd": total_value_twd,
+        "pnl_twd": total_value_twd - cost_twd,
+    }
+
+
 async def calculate_summary(refresh_prices: bool) -> dict:
     settings = get_settings()
     reset_price_status()
@@ -77,9 +100,9 @@ async def calculate_summary(refresh_prices: bool) -> dict:
         "crypto_value": manual_rows.get("crypto_value", 0),
     }
     invested = {account: manual_rows.get(invested_key(account), 0) for account in ACCOUNTS}
-    investments = list_manual_investments()
-    investment_total = sum(float(row.get("value") or 0) for row in investments)
-    manual_investment_cash_total = sum(float(row.get("cash_amount") or 0) for row in investments)
+    investments = [enrich_manual_investment(row, usd_rate) for row in list_manual_investments()]
+    investment_total = sum(row["value_twd"] for row in investments)
+    manual_investment_cash_total = sum(row["cash_amount_twd"] for row in investments)
 
     cash_rows = list_cash_accounts()
     cash_by_account = {account: cash_summary(cash_rows, usd_rate, account) for account in ACCOUNTS}
