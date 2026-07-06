@@ -49,7 +49,7 @@ export default function TradeForm({ onSubmit, submitting }) {
   const [companyName, setCompanyName] = useState('')
   const [companyLoading, setCompanyLoading] = useState(false)
 
-  const isTw = form.account === ACCOUNTS[0] || form.account === ACCOUNTS[3]
+  const isTw = form.account === ACCOUNTS[0]
   const isUs = form.account === ACCOUNTS[1] || form.account === ACCOUNTS[2]
   const cathayUsFee = useMemo(() => estimateCathayUsFee(form.price, form.qty), [form.price, form.qty])
   const fee = useMemo(() => (isTw ? estimateTwFee(form.price, form.qty) : Number(form.fee || 0)), [form, isTw])
@@ -133,7 +133,7 @@ export default function TradeForm({ onSubmit, submitting }) {
     setTickerHint('')
     setForm((current) => {
       let account = current.account
-      if ((account === ACCOUNTS[0] || account === ACCOUNTS[3]) && looksLikeUsTicker(ticker)) {
+      if (account === ACCOUNTS[0] && looksLikeUsTicker(ticker)) {
         account = ACCOUNTS[1]
         setTickerHint(`看起來像美股代號，已自動切到 ${ACCOUNTS[1]}。`)
       } else if ((account === ACCOUNTS[1] || account === ACCOUNTS[2]) && looksLikeTwTicker(ticker)) {
@@ -166,14 +166,14 @@ export default function TradeForm({ onSubmit, submitting }) {
 
   return (
     <form onSubmit={submit} className="grid gap-4 rounded-md border border-line bg-surface p-3 sm:p-4">
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-[1fr_1fr_1fr_auto] sm:gap-3">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-[2fr_2fr_1fr] sm:gap-3">
         {ACCOUNTS.map((account, index) => (
           <button
             key={account}
             type="button"
             onClick={() => update('account', account)}
             className={`rounded-md border px-3 py-2 text-sm ${
-              index === 3 ? 'text-xs opacity-85 sm:px-2 sm:py-1.5' : 'font-medium'
+              index === 2 ? 'font-medium sm:text-xs' : 'font-medium'
             } ${
               form.account === account ? 'border-sky-400 bg-sky-500/15 text-white' : 'border-line bg-panel text-slate-300'
             }`}

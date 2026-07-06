@@ -1,4 +1,4 @@
-TW_ACCOUNTS = {"台股", "x"}
+TW_ACCOUNTS = {"台股"}
 
 ETF_LIST = {"0050", "00981A"}
 

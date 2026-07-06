@@ -5,7 +5,7 @@ from fastapi import APIRouter, Header, HTTPException
 
 from config import get_settings
 from repositories.snapshots import normalize_snapshot_time, upsert_snapshots
-from repositories.summary_cache import upsert_summary_cache
+from services.accounts import ACCOUNTS
 from services.prices import get_price_status
 
 router = APIRouter()
@@ -20,19 +20,39 @@ def require_cron_secret(x_cron_secret: str | None) -> None:
 
 
 async def refresh_summary() -> dict:
-    from routers.summary import calculate_summary
+    from routers.summary import refresh_summary_cache
 
-    summary = await calculate_summary(refresh_prices=True)
-    return upsert_summary_cache(summary)
+    return await refresh_summary_cache(skip_if_running=False)
+
+
+async def refresh_portfolios(refresh_prices: bool = False) -> list[dict]:
+    from routers.portfolio import refresh_portfolio_cache
+
+    refreshed = []
+    for account in ACCOUNTS:
+        cached = await refresh_portfolio_cache(
+            account,
+            refresh_prices=refresh_prices,
+            skip_if_running=False,
+        )
+        refreshed.append(
+            {
+                "account": account,
+                "summary_cached_at": cached.get("summary_cached_at") if cached else None,
+            }
+        )
+    return refreshed
 
 
 @router.post("/refresh")
 async def refresh_all(x_cron_secret: str | None = Header(default=None, alias="X-Cron-Secret")) -> dict:
     require_cron_secret(x_cron_secret)
     cached = await refresh_summary()
+    portfolios = await refresh_portfolios(refresh_prices=False)
     return {
         "ok": True,
         "summary_cached_at": cached.get("summary_cached_at"),
+        "portfolios": portfolios,
         "price_status": get_price_status(),
     }
 

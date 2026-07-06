@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Eye, EyeOff, RefreshCw } from 'lucide-react'
 
 import AssetPieChart from '../components/AssetPieChart'
@@ -90,15 +90,24 @@ function investmentPnlTwd(row) {
 }
 
 export default function Dashboard() {
-  const [refreshToken, setRefreshToken] = useState(0)
+  const [summaryRequest, setSummaryRequest] = useState({ token: 0, refresh: false })
   const [selectedInvestmentGroup, setSelectedInvestmentGroup] = useState(null)
   const [summaryExpanded, setSummaryExpanded] = useState(false)
   const { hideAmounts, toggleHideAmounts } = usePrivacy()
-  const { data, error, loading } = useSummary(refreshToken)
+  const { data, error, loading } = useSummary(summaryRequest.token, summaryRequest.refresh)
+  const refreshInBackground = Boolean(data?.refresh_queued || data?.summary_refresh?.in_progress)
 
   function refreshNow() {
-    setRefreshToken((value) => value + 1)
+    setSummaryRequest((current) => ({ token: current.token + 1, refresh: true }))
   }
+
+  useEffect(() => {
+    if (!refreshInBackground) return undefined
+    const timer = setTimeout(() => {
+      setSummaryRequest((current) => ({ token: current.token + 1, refresh: false }))
+    }, 5000)
+    return () => clearTimeout(timer)
+  }, [refreshInBackground, data?.summary_cached_at])
 
   const today = new Intl.DateTimeFormat('zh-TW', {
     year: 'numeric',
@@ -113,7 +122,7 @@ export default function Dashboard() {
 
   const accounts = data.accounts || {}
   const ownAccountNames = ['台股', '美股']
-  const externalAccountNames = ['爸媽美股', 'x']
+  const externalAccountNames = ['爸媽美股']
   const ownAccounts = Object.fromEntries(Object.entries(accounts).filter(([name]) => ownAccountNames.includes(name)))
   const externalAccounts = Object.fromEntries(Object.entries(accounts).filter(([name]) => externalAccountNames.includes(name)))
   const stockRows = Object.entries(ownAccounts).map(([name, row]) => ({
@@ -236,11 +245,11 @@ export default function Dashboard() {
           <button
             type="button"
             onClick={refreshNow}
-            disabled={loading}
-            className={`flex items-center gap-1.5 rounded-md border border-sky-500 bg-sky-500/15 px-3 py-2 text-sm font-medium text-sky-100 transition active:scale-[0.99] disabled:opacity-70 ${loading ? 'submit-pulse' : 'hover:bg-sky-500/20'}`}
+            disabled={loading || refreshInBackground}
+            className={`flex items-center gap-1.5 rounded-md border border-sky-500 bg-sky-500/15 px-3 py-2 text-sm font-medium text-sky-100 transition active:scale-[0.99] disabled:opacity-70 ${loading || refreshInBackground ? 'submit-pulse' : 'hover:bg-sky-500/20'}`}
           >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            <span className="hidden sm:inline">刷新股價</span>
+            <RefreshCw size={14} className={loading || refreshInBackground ? 'animate-spin' : ''} />
+            <span className="hidden sm:inline">{refreshInBackground ? '背景更新中' : '刷新股價'}</span>
           </button>
         </div>
       </header>

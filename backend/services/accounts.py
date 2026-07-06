@@ -2,12 +2,11 @@ ACCOUNT_CURRENCY = {
     "台股": "TWD",
     "美股": "USD",
     "爸媽美股": "USD",
-    "x": "TWD",
 }
 
-ACCOUNTS = ["台股", "美股", "爸媽美股", "x"]
+ACCOUNTS = ["台股", "美股", "爸媽美股"]
 OWN_ACCOUNTS = {"台股", "美股"}
-EXTERNAL_ACCOUNTS = {"爸媽美股", "x"}
+EXTERNAL_ACCOUNTS = {"爸媽美股"}
 
 
 def account_currency(account: str) -> str:

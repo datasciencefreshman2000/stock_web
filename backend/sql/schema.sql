@@ -21,6 +21,10 @@ create table if not exists trades (
 
 create index if not exists idx_trades_account_date on trades(account, date);
 create index if not exists idx_trades_account_ticker on trades(account, ticker);
+create index if not exists idx_trades_account_date_created
+  on trades(account, date desc, created_at desc);
+create index if not exists idx_trades_account_ticker_date_created
+  on trades(account, ticker, date desc, created_at desc);
 
 create table if not exists manual_values (
   key text primary key,
@@ -37,6 +41,9 @@ create table if not exists price_cache (
   fetched_at timestamptz default now(),
   source text default 'finnhub'
 );
+
+create index if not exists idx_price_cache_fetched_at
+  on price_cache(fetched_at desc);
 
 create table if not exists cash_accounts (
   id uuid primary key default gen_random_uuid(),

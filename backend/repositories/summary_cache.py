@@ -4,6 +4,7 @@ from database import get_supabase
 
 
 SUMMARY_CACHE_KEY = "main"
+PORTFOLIO_CACHE_PREFIX = "portfolio:"
 SUMMARY_CACHE_TABLE_MISSING_MESSAGES = (
     "summary_cache",
     "PGRST205",
@@ -12,6 +13,16 @@ SUMMARY_CACHE_TABLE_MISSING_MESSAGES = (
     "Could not find the 'summary_cache'",
     "schema cache",
 )
+
+
+def portfolio_cache_key(account: str) -> str:
+    return f"{PORTFOLIO_CACHE_PREFIX}{account}"
+
+
+def app_cache_keys() -> list[str]:
+    from services.accounts import ACCOUNTS
+
+    return [SUMMARY_CACHE_KEY, *[portfolio_cache_key(account) for account in [*ACCOUNTS, "x"]]]
 
 
 def is_summary_cache_missing_error(exc: Exception) -> bool:
@@ -75,9 +86,14 @@ def upsert_summary_cache(payload: dict, cache_key: str = SUMMARY_CACHE_KEY) -> d
     return cached
 
 
-def clear_summary_cache(cache_key: str = SUMMARY_CACHE_KEY) -> None:
+def clear_summary_cache(cache_key: str | None = None) -> None:
     try:
-        get_supabase().table("summary_cache").delete().eq("cache_key", cache_key).execute()
+        query = get_supabase().table("summary_cache").delete()
+        if cache_key:
+            query = query.eq("cache_key", cache_key)
+        else:
+            query = query.in_("cache_key", app_cache_keys())
+        query.execute()
     except Exception as exc:
         if is_summary_cache_missing_error(exc):
             return

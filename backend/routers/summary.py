@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Query
+import asyncio
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, BackgroundTasks, Query
 
 from config import get_settings
 from repositories.manual import list_cash_accounts, list_manual_values
@@ -7,11 +10,59 @@ from repositories.price_cache import list_price_cache
 from repositories.summary_cache import get_summary_cache, upsert_summary_cache
 from repositories.trades import list_trades
 from services.accounts import ACCOUNTS, EXTERNAL_ACCOUNTS, OWN_ACCOUNTS, cash_summary, enrich_account_summary, invested_key
-from services.calculator import build_holdings, summarize_account
+from services.calculator import (
+    active_tickers,
+    analyze_account_trades,
+    build_holdings_from_results,
+    summarize_account_from_results,
+)
 from services.constants import MANUAL_COSTS, TW_ACCOUNTS
 from services.prices import fetch_prices_batch, fetch_usd_rate, get_price_status, reset_price_status
 
 router = APIRouter()
+SUMMARY_REFRESH_LOCK = asyncio.Lock()
+SUMMARY_REFRESH_STATE = {
+    "in_progress": False,
+    "last_started_at": None,
+    "last_finished_at": None,
+    "last_error": None,
+}
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def get_summary_refresh_status() -> dict:
+    return dict(SUMMARY_REFRESH_STATE)
+
+
+def with_summary_refresh_status(payload: dict | None, queued: bool = False) -> dict:
+    result = dict(payload or {})
+    if isinstance(result.get("accounts"), dict):
+        result["accounts"] = {
+            account: row
+            for account, row in result["accounts"].items()
+            if account in ACCOUNTS
+        }
+    if isinstance(result.get("invested"), dict):
+        result["invested"] = {
+            account: row
+            for account, row in result["invested"].items()
+            if account in ACCOUNTS
+        }
+    if isinstance(result.get("cash"), dict) and isinstance(result["cash"].get("by_account"), dict):
+        result["cash"] = {
+            **result["cash"],
+            "by_account": {
+                account: row
+                for account, row in result["cash"]["by_account"].items()
+                if account in ACCOUNTS
+            },
+        }
+    result["refresh_queued"] = queued
+    result["summary_refresh"] = get_summary_refresh_status()
+    return result
 
 
 def investment_amount_twd(row: dict, key: str, usd_rate: float) -> float:
@@ -54,11 +105,13 @@ async def calculate_summary(refresh_prices: bool) -> dict:
         if account in trades_by_account:
             trades_by_account[account].append(trade)
 
+    fifo_by_account = {}
     tickers_by_account = {}
     all_price_symbols = []
     for account in ACCOUNTS:
-        base_holdings = await build_holdings(account, trades_by_account[account], {})
-        tickers = [holding["ticker"] for holding in base_holdings]
+        fifo_results = analyze_account_trades(account, trades_by_account[account])
+        fifo_by_account[account] = fifo_results
+        tickers = active_tickers(fifo_results)
         tickers_by_account[account] = tickers
         for ticker in tickers:
             all_price_symbols.append(f"TW:{ticker}" if account in TW_ACCOUNTS else ticker)
@@ -82,8 +135,8 @@ async def calculate_summary(refresh_prices: bool) -> dict:
             if price_provider_ready
             else {}
         )
-        holdings = await build_holdings(account, trades, prices)
-        summary = summarize_account(account, trades, holdings)
+        holdings = build_holdings_from_results(fifo_by_account[account], prices)
+        summary = summarize_account_from_results(fifo_by_account[account], holdings)
         enrich_account_summary(summary, account, usd_rate, manual_rows.get(invested_key(account)))
         accounts[account] = summary
         if account in OWN_ACCOUNTS:
@@ -128,12 +181,46 @@ async def calculate_summary(refresh_prices: bool) -> dict:
     }
 
 
-@router.get("/summary")
-async def get_summary(refresh_prices: bool = Query(default=False)) -> dict:
-    if not refresh_prices:
-        cached = get_summary_cache()
-        if cached:
+async def refresh_summary_cache(skip_if_running: bool = False) -> dict | None:
+    if skip_if_running and SUMMARY_REFRESH_LOCK.locked():
+        return get_summary_cache()
+
+    async with SUMMARY_REFRESH_LOCK:
+        SUMMARY_REFRESH_STATE.update(
+            {
+                "in_progress": True,
+                "last_started_at": _now_iso(),
+                "last_finished_at": None,
+                "last_error": None,
+            }
+        )
+        try:
+            summary = await calculate_summary(refresh_prices=True)
+            cached = upsert_summary_cache(summary)
+            SUMMARY_REFRESH_STATE["last_finished_at"] = _now_iso()
             return cached
+        except Exception as exc:
+            SUMMARY_REFRESH_STATE["last_error"] = f"{type(exc).__name__}: {exc}"
+            raise
+        finally:
+            SUMMARY_REFRESH_STATE["in_progress"] = False
+
+
+@router.get("/summary")
+async def get_summary(
+    background_tasks: BackgroundTasks,
+    refresh_prices: bool = Query(default=False),
+) -> dict:
+    cached = get_summary_cache()
+    if refresh_prices and cached:
+        queued = False
+        if not SUMMARY_REFRESH_LOCK.locked():
+            background_tasks.add_task(refresh_summary_cache, True)
+            queued = True
+        return with_summary_refresh_status(cached, queued=queued)
+
+    if cached and not refresh_prices:
+        return with_summary_refresh_status(cached)
 
     summary = await calculate_summary(refresh_prices)
-    return upsert_summary_cache(summary)
+    return with_summary_refresh_status(upsert_summary_cache(summary))

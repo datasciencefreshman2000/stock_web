@@ -3,16 +3,34 @@ from collections import defaultdict
 from services.fifo import calc_fifo
 
 
-async def build_holdings(account: str, trades: list[dict], prices: dict[str, float | None], company_names: dict[str, str | None] | None = None) -> list[dict]:
+def analyze_account_trades(account: str, trades: list[dict]) -> dict[str, dict]:
     by_ticker: dict[str, list[dict]] = defaultdict(list)
     for trade in trades:
         by_ticker[trade["ticker"]].append(trade)
 
+    return {
+        ticker: calc_fifo(ticker_trades, account, ticker)
+        for ticker, ticker_trades in by_ticker.items()
+    }
+
+
+def active_tickers(fifo_results: dict[str, dict]) -> list[str]:
+    return [
+        ticker
+        for ticker, result in fifo_results.items()
+        if result["current_qty"] > 0
+    ]
+
+
+def build_holdings_from_results(
+    fifo_results: dict[str, dict],
+    prices: dict[str, float | None],
+    company_names: dict[str, str | None] | None = None,
+) -> list[dict]:
     holdings = []
     total_market_value = 0.0
 
-    for ticker, ticker_trades in by_ticker.items():
-        result = calc_fifo(ticker_trades, account, ticker)
+    for ticker, result in fifo_results.items():
         if result["current_qty"] <= 0:
             continue
 
@@ -50,16 +68,24 @@ async def build_holdings(account: str, trades: list[dict], prices: dict[str, flo
     return holdings
 
 
-def summarize_account(account: str, trades: list[dict], holdings: list[dict]) -> dict:
-    by_ticker: dict[str, list[dict]] = defaultdict(list)
-    for trade in trades:
-        by_ticker[trade["ticker"]].append(trade)
+async def build_holdings(
+    account: str,
+    trades: list[dict],
+    prices: dict[str, float | None],
+    company_names: dict[str, str | None] | None = None,
+) -> list[dict]:
+    return build_holdings_from_results(
+        analyze_account_trades(account, trades),
+        prices,
+        company_names,
+    )
 
+
+def summarize_account_from_results(fifo_results: dict[str, dict], holdings: list[dict]) -> dict:
     realized_pnl = 0.0
     total_fee = 0.0
     total_tax = 0.0
-    for ticker, ticker_trades in by_ticker.items():
-        result = calc_fifo(ticker_trades, account, ticker)
+    for result in fifo_results.values():
         realized_pnl += result["realized_pnl"]
         total_fee += result["total_fee"]
         total_tax += result["total_tax"]
@@ -74,3 +100,7 @@ def summarize_account(account: str, trades: list[dict], holdings: list[dict]) ->
         "total_fee": total_fee,
         "total_tax": total_tax,
     }
+
+
+def summarize_account(account: str, trades: list[dict], holdings: list[dict]) -> dict:
+    return summarize_account_from_results(analyze_account_trades(account, trades), holdings)

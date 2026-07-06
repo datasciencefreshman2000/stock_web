@@ -10,6 +10,8 @@ from services.constants import TW_ACCOUNTS
 PRICE_CACHE: dict[str, dict] = {}
 RATE_CACHE: dict[str, float | str] = {}
 COMPANY_NAME_CACHE: dict[str, str] = {}
+PRICE_REFRESH_TTL_SECONDS = 10 * 60
+RATE_REFRESH_TTL_SECONDS = 60 * 60
 PRICE_FETCH_STATE = {
     "in_progress": False,
     "last_started_at": None,
@@ -25,6 +27,29 @@ PRICE_FETCH_STATE = {
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _parse_datetime(value: object) -> datetime | None:
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _cache_is_fresh(row: dict, ttl_seconds: int) -> bool:
+    fetched_at = _parse_datetime(row.get("fetched_at"))
+    if not fetched_at:
+        return False
+    age = (datetime.now(timezone.utc) - fetched_at).total_seconds()
+    return age <= ttl_seconds
 
 
 def reset_price_status() -> None:
@@ -157,24 +182,24 @@ async def fetch_prices_batch(
     for ticker in unique_tickers:
         symbol = symbol_by_ticker[ticker]
         cached = PRICE_CACHE.get(symbol)
+        db_row = db_cache.get(symbol)
         if symbol in request_cache:
             results[ticker] = request_cache[symbol]
             cached_count += 1
-        elif db_cache.get(symbol) and not refresh:
-            row = db_cache[symbol]
-            price = float(row["price"]) if row.get("price") is not None else None
+        elif cached and (not refresh or _cache_is_fresh(cached, PRICE_REFRESH_TTL_SECONDS)):
+            results[ticker] = cached["price"]
+            cached_count += 1
+        elif db_row and (not refresh or _cache_is_fresh(db_row, PRICE_REFRESH_TTL_SECONDS)):
+            price = float(db_row["price"]) if db_row.get("price") is not None else None
             results[ticker] = price
             cached_count += 1
             PRICE_CACHE[symbol] = {
                 "ticker": ticker,
                 "symbol": symbol,
-                "account": row.get("account") or account,
+                "account": db_row.get("account") or account,
                 "price": price,
-                "fetched_at": row.get("fetched_at"),
+                "fetched_at": db_row.get("fetched_at"),
             }
-        elif cached and not refresh:
-            results[ticker] = cached["price"]
-            cached_count += 1
         elif refresh:
             to_fetch.append((ticker, symbol))
         else:
@@ -287,9 +312,12 @@ async def fetch_currency_api_usd_twd(client: httpx.AsyncClient) -> float:
 
 
 async def fetch_usd_rate(api_key: str = "", refresh: bool = False) -> float:
-    if RATE_CACHE.get("usd_twd") and not refresh:
+    if RATE_CACHE.get("usd_twd") and (
+        not refresh or _cache_is_fresh({"fetched_at": RATE_CACHE.get("fetched_at")}, RATE_REFRESH_TTL_SECONDS)
+    ):
         return float(RATE_CACHE["usd_twd"])
 
+    fallback_rate = RATE_CACHE.get("usd_twd")
     errors: list[str] = []
     async with httpx.AsyncClient() as client:
         for source, fetcher in (
@@ -307,6 +335,8 @@ async def fetch_usd_rate(api_key: str = "", refresh: bool = False) -> float:
                 errors.append(f"{source}: {type(exc).__name__}")
 
     RATE_CACHE["error"] = "; ".join(errors)
+    if fallback_rate:
+        return float(fallback_rate)
     return 31.316
 
 

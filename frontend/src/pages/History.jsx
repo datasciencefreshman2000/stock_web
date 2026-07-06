@@ -94,7 +94,7 @@ function tradeFormFromTrade(trade, fallbackAccount) {
 }
 
 function isTwTradeForm(form) {
-  return form.account === ACCOUNTS[0] || form.account === ACCOUNTS[3]
+  return form.account === ACCOUNTS[0]
 }
 
 function tradePayloadFromForm(form) {

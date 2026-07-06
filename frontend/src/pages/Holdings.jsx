@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import HoldingsTable from '../components/HoldingsTable'
 import ManualValueEditor from '../components/ManualValueEditor'
@@ -66,11 +66,14 @@ function StockCashBar({ stocks, cash, total, currency, hideAmounts }) {
 export default function Holdings() {
   const { hideAmounts } = usePrivacy()
   const [tab, setTab] = useState(ACCOUNT_TABS[0])
-  const [refreshToken, setRefreshToken] = useState(0)
+  const [portfolioRequest, setPortfolioRequest] = useState({ token: 0, refresh: false })
   const [metricsExpanded, setMetricsExpanded] = useState(false)
+  const initialTabRef = useRef(true)
   const isManual = tab === ACCOUNT_TABS[3]
-  const portfolio = usePortfolio(isManual ? ACCOUNT_TABS[0] : tab, refreshToken)
+  const portfolioAccount = isManual ? ACCOUNT_TABS[0] : tab
+  const portfolio = usePortfolio(portfolioAccount, portfolioRequest.token, portfolioRequest.refresh, !isManual)
   const manual = useAsync(() => api.getManual(), [])
+  const portfolioRefreshInBackground = Boolean(portfolio.data?.refresh_queued || portfolio.data?.portfolio_refresh?.in_progress)
 
   const active = isManual ? manual : portfolio
   const currency = tab === ACCOUNT_TABS[1] || tab === ACCOUNT_TABS[2] ? 'USD' : 'TWD'
@@ -88,7 +91,20 @@ export default function Holdings() {
 
   useEffect(() => {
     setMetricsExpanded(false)
+    if (initialTabRef.current) {
+      initialTabRef.current = false
+      return
+    }
+    setPortfolioRequest((current) => ({ token: current.token + 1, refresh: false }))
   }, [tab])
+
+  useEffect(() => {
+    if (isManual || !portfolioRefreshInBackground) return undefined
+    const timer = setTimeout(() => {
+      setPortfolioRequest((current) => ({ token: current.token + 1, refresh: false }))
+    }, 5000)
+    return () => clearTimeout(timer)
+  }, [isManual, portfolioRefreshInBackground, portfolio.data?.summary_cached_at])
 
   const metricCards = [
     {
@@ -141,11 +157,11 @@ export default function Holdings() {
           {!isManual ? (
             <button
               type="button"
-              onClick={() => setRefreshToken((value) => value + 1)}
-              disabled={portfolio.loading}
-              className="rounded-md border border-sky-500 bg-sky-500/15 px-3 py-2 text-sm font-medium text-sky-100 disabled:opacity-60 sm:px-4"
+              onClick={() => setPortfolioRequest((current) => ({ token: current.token + 1, refresh: true }))}
+              disabled={portfolio.loading || portfolioRefreshInBackground}
+              className={`rounded-md border border-sky-500 bg-sky-500/15 px-3 py-2 text-sm font-medium text-sky-100 disabled:opacity-60 sm:px-4 ${portfolio.loading || portfolioRefreshInBackground ? 'submit-pulse' : 'hover:bg-sky-500/20'}`}
             >
-              刷新股價
+              {portfolioRefreshInBackground ? '背景更新中' : '刷新股價'}
             </button>
           ) : null}
         </div>
