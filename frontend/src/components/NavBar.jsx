@@ -20,12 +20,12 @@ export default function NavBar() {
               key={item.to}
               to={item.to}
               className={({ isActive }) =>
-                `flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-md leading-tight transition duration-150 hover:-translate-y-0.5 hover:bg-sky-500/10 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400/70 active:scale-95 ${
+                `group flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg leading-tight transition-[background-color,color,box-shadow,transform] duration-200 ease-out hover:bg-white/[0.06] hover:text-slate-100 hover:shadow-[inset_0_0_0_1px_rgba(125,211,252,0.16)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400/70 active:scale-[0.98] active:bg-white/[0.08] ${
                   item.featured ? 'px-0.5 py-2 text-xs sm:px-1.5 sm:py-2.5' : 'px-0.5 py-1.5 text-[11px] sm:px-2 sm:py-2 sm:text-xs'
-                } ${isActive ? 'bg-panel text-white' : 'text-slate-400'}`
+                } ${isActive ? 'bg-panel text-white shadow-[inset_0_0_0_1px_rgba(148,163,184,0.12)]' : 'text-slate-400'}`
               }
             >
-              <Icon size={item.featured ? 22 : 18} />
+              <Icon className="transition duration-200 ease-out group-hover:scale-105 group-hover:text-sky-100" size={item.featured ? 22 : 18} />
               <span className={`max-w-full truncate ${item.featured ? 'font-semibold' : ''}`}>{item.label}</span>
             </NavLink>
           )

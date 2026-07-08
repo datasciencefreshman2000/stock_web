@@ -172,8 +172,8 @@ export default function Holdings() {
           <button
             key={item}
             onClick={() => setTab(item)}
-            className={`shrink-0 rounded-md border px-3 py-2 text-sm sm:px-4 ${
-              tab === item ? 'border-sky-400 bg-sky-500/15 text-white' : 'border-line bg-surface text-slate-300'
+            className={`shrink-0 rounded-md border px-3 py-2 text-sm transition-[background-color,border-color,color,box-shadow,transform] duration-200 ease-out hover:border-sky-400/60 hover:bg-sky-500/10 hover:text-white hover:shadow-[0_8px_20px_rgba(14,165,233,0.10)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400/70 active:scale-[0.98] sm:px-4 ${
+              tab === item ? 'border-sky-400 bg-sky-500/15 text-white shadow-sm shadow-sky-950/40' : 'border-line bg-surface text-slate-300'
             }`}
           >
             {item}
