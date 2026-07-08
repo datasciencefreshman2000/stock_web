@@ -267,7 +267,7 @@ function CapitalMovementPanel({ bankNames, positiveBankNames, onSaved }) {
             key={key}
             type="button"
             onClick={() => setMode(key)}
-            className={`rounded-md border px-2 py-2 text-sm ${mode === key ? 'border-sky-400 bg-sky-500/15 text-white' : 'border-line bg-panel text-slate-300'}`}
+            className={`rounded-md border px-2 py-2 text-sm transition hover:-translate-y-0.5 hover:border-sky-400/70 hover:bg-sky-500/10 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400/70 active:scale-[0.98] ${mode === key ? 'border-sky-400 bg-sky-500/15 text-white shadow-sm shadow-sky-950/40' : 'border-line bg-panel text-slate-300'}`}
           >
             {label}
           </button>

@@ -20,7 +20,7 @@ export default function NavBar() {
               key={item.to}
               to={item.to}
               className={({ isActive }) =>
-                `flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-md leading-tight transition duration-150 active:scale-95 ${
+                `flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-md leading-tight transition duration-150 hover:-translate-y-0.5 hover:bg-sky-500/10 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400/70 active:scale-95 ${
                   item.featured ? 'px-0.5 py-2 text-xs sm:px-1.5 sm:py-2.5' : 'px-0.5 py-1.5 text-[11px] sm:px-2 sm:py-2 sm:text-xs'
                 } ${isActive ? 'bg-panel text-white' : 'text-slate-400'}`
               }

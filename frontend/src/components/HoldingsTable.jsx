@@ -19,6 +19,75 @@ const ALL_COLUMNS = [
 const MOBILE_SORT_KEYS = ['market_value', 'pnl_pct', 'ticker']
 const COMPACT_COLUMNS = ['ticker', 'market_value', 'pnl', 'pnl_pct', 'weight']
 
+function tradeSortKey(trade) {
+  const isSell = Number(trade.sell_qty || 0) > 0 ? 1 : 0
+  return [
+    String(trade.date || ''),
+    isSell,
+    String(trade.created_at || ''),
+    String(trade.id || ''),
+  ]
+}
+
+function compareTradesForFifo(a, b) {
+  const left = tradeSortKey(a)
+  const right = tradeSortKey(b)
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] < right[index]) return -1
+    if (left[index] > right[index]) return 1
+  }
+  return 0
+}
+
+function buildBuyLotDetails(trades) {
+  const buyRows = []
+  const lots = []
+  let unmatchedSellBalance = 0
+
+  ;[...trades].sort(compareTradesForFifo).forEach((trade) => {
+    const buyQty = Number(trade.buy_qty || 0)
+    const sellQty = Number(trade.sell_qty || 0)
+    const price = Number(trade.price || 0)
+
+    if (buyQty > 0) {
+      const matchedGapQty = Math.min(buyQty, unmatchedSellBalance)
+      unmatchedSellBalance -= matchedGapQty
+      const longQty = buyQty - matchedGapQty
+      const row = {
+        ...trade,
+        original_qty: buyQty,
+        fifo_qty: longQty,
+        sold_qty: 0,
+        remaining_qty: longQty,
+        sell_value: 0,
+      }
+      buyRows.push(row)
+      if (longQty > 0) {
+        lots.push({ row, remaining_qty: longQty })
+      }
+    }
+
+    if (sellQty > 0) {
+      let remaining = sellQty
+      while (remaining > 0 && lots.length) {
+        const lot = lots[0]
+        const qty = Math.min(lot.remaining_qty, remaining)
+        lot.row.sold_qty += qty
+        lot.row.remaining_qty -= qty
+        lot.row.sell_value += qty * price
+        lot.remaining_qty -= qty
+        remaining -= qty
+        if (lot.remaining_qty <= 1e-7) lots.shift()
+      }
+      if (remaining > 0) {
+        unmatchedSellBalance += remaining
+      }
+    }
+  })
+
+  return buyRows
+}
+
 export default function HoldingsTable({ holdings, account, currency = 'TWD' }) {
   const { hideAmounts } = usePrivacy()
   const [sort, setSort] = useState({ key: 'market_value', direction: 'desc' })
@@ -64,7 +133,7 @@ export default function HoldingsTable({ holdings, account, currency = 'TWD' }) {
       .getTrades(account, { ticker: activeTicker })
       .then((data) => {
         if (!active) return
-        setDetailTrades((data.trades || []).filter((trade) => Number(trade.buy_qty || 0) > 0))
+        setDetailTrades(buildBuyLotDetails(data.trades || []))
       })
       .catch((err) => {
         if (active) setDetailError(err.message || '讀取明細失敗')
@@ -191,10 +260,10 @@ export default function HoldingsTable({ holdings, account, currency = 'TWD' }) {
           <tbody>
             {sortedHoldings.map((row) => (
               <Fragment key={row.ticker}>
-                <tr key={row.ticker} className={`border-b border-line/70 last:border-0 ${activeTicker === row.ticker ? 'bg-sky-500/5' : ''}`}>
+                <tr key={row.ticker} className={`border-b border-line/70 transition-colors last:border-0 hover:bg-sky-500/5 ${activeTicker === row.ticker ? 'bg-sky-500/5' : ''}`}>
                   <td className="px-4 py-3">
-                    <button type="button" onClick={() => toggleDetail(row.ticker)} className="min-h-0 text-left">
-                      <div className="font-medium text-white underline-offset-4 hover:underline">{row.ticker}</div>
+                    <button type="button" onClick={() => toggleDetail(row.ticker)} className="group min-h-0 rounded-md px-1 py-0.5 text-left transition hover:-translate-y-0.5 hover:bg-sky-500/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400/70 active:scale-[0.98]">
+                      <div className="font-medium text-white underline-offset-4 group-hover:text-sky-100 group-hover:underline">{row.ticker}</div>
                       {row.company_name ? <div className="text-xs text-slate-400">{row.company_name}</div> : null}
                     </button>
                   </td>
@@ -230,11 +299,11 @@ function MobileCardList({ holdings, account, currency, hideAmounts, activeTicker
   return (
     <div className="divide-y divide-line">
       {holdings.map((row) => (
-        <div key={row.ticker} className={`px-3 py-2 ${activeTicker === row.ticker ? 'bg-sky-500/5' : ''}`}>
-          <button type="button" onClick={() => onToggle(row.ticker)} className="mb-1 flex min-h-0 w-full items-start justify-between gap-3 text-left">
+        <div key={row.ticker} className={`px-3 py-2 transition-colors ${activeTicker === row.ticker ? 'bg-sky-500/5' : 'hover:bg-sky-500/5'}`}>
+          <button type="button" onClick={() => onToggle(row.ticker)} className="group mb-1 flex min-h-0 w-full items-start justify-between gap-3 rounded-md px-1 py-1 text-left transition hover:-translate-y-0.5 hover:bg-sky-500/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400/70 active:scale-[0.99]">
             <div className="min-w-0">
               <div className="flex min-w-0 items-baseline gap-2">
-                <span className="shrink-0 text-sm font-medium text-white underline-offset-4">{row.ticker}</span>
+                <span className="shrink-0 text-sm font-medium text-white underline-offset-4 group-hover:text-sky-100 group-hover:underline">{row.ticker}</span>
                 {account === '台股' && row.company_name ? <span className="truncate text-[11px] text-slate-400">{row.company_name}</span> : null}
               </div>
               {account !== '台股' && row.company_name ? <div className="truncate text-[11px] text-slate-400">{row.company_name}</div> : null}
@@ -274,27 +343,40 @@ function HoldingTradeDetails({ row, trades, loading, error, currency, hideAmount
       {!loading && !error && !trades.length ? <div className="text-xs text-slate-500">沒有買入紀錄。</div> : null}
       {!loading && !error && trades.length ? (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[520px] text-xs">
+          <table className="w-full min-w-[700px] text-xs">
             <thead className="text-slate-400">
               <tr>
                 <th className="py-2 text-left">日期</th>
-                <th className="py-2 text-right">股數</th>
+                <th className="py-2 text-right">買入股數</th>
+                <th className="py-2 text-right">已賣</th>
+                <th className="py-2 text-right">剩餘</th>
                 <th className="py-2 text-right">買入均價</th>
+                <th className="py-2 text-right">賣出均價</th>
                 <th className="py-2 text-right">損益</th>
                 <th className="py-2 text-right">損益%</th>
               </tr>
             </thead>
             <tbody>
               {trades.map((trade) => {
-                const qty = Number(trade.buy_qty || 0)
+                const qty = Number(trade.original_qty ?? trade.buy_qty ?? 0)
+                const soldQty = Number(trade.sold_qty || 0)
+                const remainingQty = Number(trade.remaining_qty ?? qty)
+                const activeQty = remainingQty > 1e-7 ? remainingQty : 0
                 const price = Number(trade.price || 0)
-                const pnl = (currentPrice - price) * qty
-                const pnlRatio = price > 0 ? (currentPrice - price) / price : null
+                const avgSellPrice = soldQty > 0 ? Number(trade.sell_value || 0) / soldQty : null
+                const realizedPnl = soldQty > 0 ? Number(trade.sell_value || 0) - soldQty * price : 0
+                const unrealizedPnl = activeQty > 0 ? (currentPrice - price) * activeQty : 0
+                const pnl = realizedPnl + unrealizedPnl
+                const costBasis = price * (soldQty + activeQty)
+                const pnlRatio = costBasis > 0 ? pnl / costBasis : null
                 return (
                   <tr key={trade.id || `${trade.date}-${trade.price}-${trade.buy_qty}`} className="border-t border-line/70">
                     <td className="py-2 text-slate-300">{trade.date || '--'}</td>
                     <td className="py-2 text-right text-slate-300">{number(qty, 4)}</td>
+                    <td className="py-2 text-right text-slate-300">{number(soldQty, 4)}</td>
+                    <td className="py-2 text-right text-slate-300">{number(activeQty, 4)}</td>
                     <td className="py-2 text-right text-slate-300">{hideAmounts ? '••••' : number(price, 2)}</td>
+                    <td className="py-2 text-right text-slate-300">{hideAmounts ? (soldQty > 0 ? '••••' : '--') : avgSellPrice ? number(avgSellPrice, 2) : '--'}</td>
                     <td className={`py-2 text-right ${pnlClass(pnl)}`}>{hideAmounts ? maskAmount(money(pnl, currency)) : money(pnl, currency)}</td>
                     <td className={`py-2 text-right ${pnlClass(pnl)}`}>{percent(pnlRatio)}</td>
                   </tr>

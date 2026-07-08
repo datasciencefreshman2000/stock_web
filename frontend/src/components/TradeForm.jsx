@@ -172,10 +172,10 @@ export default function TradeForm({ onSubmit, submitting }) {
             key={account}
             type="button"
             onClick={() => update('account', account)}
-            className={`rounded-md border px-3 py-2 text-sm ${
+            className={`rounded-md border px-3 py-2 text-sm transition hover:-translate-y-0.5 hover:border-sky-400/70 hover:bg-sky-500/10 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400/70 active:scale-[0.98] ${
               index === 2 ? 'font-medium sm:text-xs' : 'font-medium'
             } ${
-              form.account === account ? 'border-sky-400 bg-sky-500/15 text-white' : 'border-line bg-panel text-slate-300'
+              form.account === account ? 'border-sky-400 bg-sky-500/15 text-white shadow-sm shadow-sky-950/40' : 'border-line bg-panel text-slate-300'
             }`}
           >
             {account}
@@ -224,12 +224,14 @@ export default function TradeForm({ onSubmit, submitting }) {
                 key={side}
                 type="button"
                 onClick={() => update('side', side)}
-                className={`rounded-md border px-3 py-2 text-sm font-medium transition ${
+                className={`rounded-md border px-3 py-2 text-sm font-medium transition hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 active:scale-[0.98] ${
                   form.side === side
                     ? side === 'buy'
-                      ? 'border-emerald-400/70 bg-emerald-500/15 text-emerald-100'
-                      : 'border-rose-400/70 bg-rose-500/15 text-rose-100'
-                    : 'border-line bg-[#0b1020] text-slate-300'
+                      ? 'border-emerald-400/70 bg-emerald-500/15 text-emerald-100 shadow-sm shadow-emerald-950/40 focus-visible:outline-emerald-400/70'
+                      : 'border-rose-400/70 bg-rose-500/15 text-rose-100 shadow-sm shadow-rose-950/40 focus-visible:outline-rose-400/70'
+                    : side === 'buy'
+                      ? 'border-line bg-[#0b1020] text-slate-300 hover:border-emerald-400/70 hover:bg-emerald-500/10 hover:text-emerald-100 focus-visible:outline-emerald-400/70'
+                      : 'border-line bg-[#0b1020] text-slate-300 hover:border-rose-400/70 hover:bg-rose-500/10 hover:text-rose-100 focus-visible:outline-rose-400/70'
                 }`}
               >
                 {label}
