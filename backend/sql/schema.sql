@@ -82,6 +82,8 @@ create table if not exists account_snapshots (
   snapshot_at timestamptz not null,
   snapshot_date date not null,
   snapshot_hour smallint not null check (snapshot_hour between 0 and 23),
+  snapshot_date_taipei date not null,
+  snapshot_hour_taipei smallint not null check (snapshot_hour_taipei between 0 and 23),
   account text not null,
   currency text not null default 'TWD',
   account_total numeric not null default 0,
@@ -108,6 +110,9 @@ create index if not exists idx_account_snapshots_at
 
 create index if not exists idx_account_snapshots_date
   on account_snapshots(snapshot_date desc);
+
+create index if not exists idx_account_snapshots_date_taipei
+  on account_snapshots(snapshot_date_taipei desc);
 
 create index if not exists idx_account_snapshots_account_at
   on account_snapshots(account, snapshot_at desc);

@@ -13,6 +13,7 @@ import { money } from '../utils/format'
 
 const BASE_ROWS = ['新光現金', '第一現金', '郵局現金', '國泰現金', '外面欠錢 (待收款)', '社團欠錢 (待收款)', '緊急現金', '公司欠錢 (待收款)', '信用卡欠錢', '身上現金']
 const BANK_ROWS = ['新光現金', '第一現金', '郵局現金', '國泰現金']
+const ON_HAND_CASH = '身上現金'
 const INCOME_SOURCES = ['宇統資訊', '陽明高中', '實驗小學', '接案']
 const OTHER_TYPES = ['外面欠錢 (待收款)', '社團欠錢', '公司欠錢', '外面欠錢 (待還款)', '緊急現金']
 const DEBOUNCE_MS = 800
@@ -194,11 +195,12 @@ function CapitalMovementPanel({ bankNames, positiveBankNames, onSaved }) {
   const [message, setMessage] = useState('')
   const incomeDestinations = [...bankNames, ACCOUNTS[0]]
   const transferBuckets = [...bankNames, ACCOUNTS[0], ACCOUNTS[1]]
+  const transferDestinations = [...transferBuckets, ON_HAND_CASH]
   const expenseSources = positiveBankNames
 
   useEffect(() => {
     const fromOptions = mode === 'expense' ? expenseSources : transferBuckets
-    const toOptions = mode === 'income' ? incomeDestinations : transferBuckets
+    const toOptions = mode === 'income' ? incomeDestinations : transferDestinations
     setForm((current) => {
       const next = { ...current }
       if ((mode === 'transfer' || mode === 'expense') && !fromOptions.includes(next.from_bucket)) {
@@ -296,7 +298,7 @@ function CapitalMovementPanel({ bankNames, positiveBankNames, onSaved }) {
           <label className="grid gap-1 text-xs text-slate-400">
             放到哪裡
             <select className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm text-white" value={form.to_bucket} onChange={(event) => update('to_bucket', event.target.value)}>
-              {(mode === 'income' ? incomeDestinations : transferBuckets).map((item) => <option key={item}>{item}</option>)}
+              {(mode === 'income' ? incomeDestinations : transferDestinations).map((item) => <option key={item}>{item}</option>)}
             </select>
           </label>
         ) : null}

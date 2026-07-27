@@ -4,7 +4,7 @@ from secrets import compare_digest
 from fastapi import APIRouter, Header, HTTPException
 
 from config import get_settings
-from repositories.snapshots import normalize_snapshot_time, upsert_snapshots
+from repositories.snapshots import normalize_snapshot_time, snapshot_taipei_parts, upsert_snapshots
 from services.accounts import ACCOUNTS
 from services.prices import get_price_status
 
@@ -62,12 +62,15 @@ async def snapshot_all(x_cron_secret: str | None = Header(default=None, alias="X
     require_cron_secret(x_cron_secret)
     cached = await refresh_summary()
     snapshot_at = normalize_snapshot_time(datetime.now(timezone.utc))
+    snapshot_date_taipei, snapshot_hour_taipei = snapshot_taipei_parts(snapshot_at)
     rows = upsert_snapshots(cached, snapshot_at)
     return {
         "ok": True,
         "snapshot_at": snapshot_at.isoformat(),
         "snapshot_date": snapshot_at.date().isoformat(),
         "snapshot_hour": snapshot_at.hour,
+        "snapshot_date_taipei": snapshot_date_taipei,
+        "snapshot_hour_taipei": snapshot_hour_taipei,
         "rows": len(rows),
         "summary_cached_at": cached.get("summary_cached_at"),
         "price_status": get_price_status(),

@@ -1,7 +1,9 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from database import get_supabase
 from services.accounts import ACCOUNT_CURRENCY, ACCOUNTS
+
+TAIPEI_TZ = timezone(timedelta(hours=8))
 
 
 def number_value(value: object) -> float:
@@ -19,11 +21,17 @@ def normalize_snapshot_time(snapshot_at: datetime | None = None) -> datetime:
     return value.replace(minute=0, second=0, microsecond=0)
 
 
+def snapshot_taipei_parts(snapshot_at: datetime) -> tuple[str, int]:
+    taipei_time = snapshot_at.astimezone(TAIPEI_TZ)
+    return taipei_time.date().isoformat(), taipei_time.hour
+
+
 def build_snapshot_rows(summary: dict, snapshot_at: datetime | None = None) -> list[dict]:
     timestamp = normalize_snapshot_time(snapshot_at)
     snapshot_at_value = timestamp.isoformat()
     snapshot_date_value = timestamp.date().isoformat()
     snapshot_hour = timestamp.hour
+    snapshot_date_taipei, snapshot_hour_taipei = snapshot_taipei_parts(timestamp)
     updated_at = datetime.now(timezone.utc).isoformat()
     accounts = summary.get("accounts") or {}
     cash_by_account = (summary.get("cash") or {}).get("by_account") or {}
@@ -41,6 +49,8 @@ def build_snapshot_rows(summary: dict, snapshot_at: datetime | None = None) -> l
                 "snapshot_at": snapshot_at_value,
                 "snapshot_date": snapshot_date_value,
                 "snapshot_hour": snapshot_hour,
+                "snapshot_date_taipei": snapshot_date_taipei,
+                "snapshot_hour_taipei": snapshot_hour_taipei,
                 "account": account,
                 "currency": ACCOUNT_CURRENCY.get(account, "TWD"),
                 "account_total": number_value(account_summary.get("account_total")),
@@ -74,6 +84,8 @@ def build_snapshot_rows(summary: dict, snapshot_at: datetime | None = None) -> l
             "snapshot_at": snapshot_at_value,
             "snapshot_date": snapshot_date_value,
             "snapshot_hour": snapshot_hour,
+            "snapshot_date_taipei": snapshot_date_taipei,
+            "snapshot_hour_taipei": snapshot_hour_taipei,
             "account": "__overall__",
             "currency": "TWD",
             "account_total": number_value(summary.get("total_assets")),
