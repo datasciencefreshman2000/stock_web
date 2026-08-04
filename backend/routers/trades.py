@@ -1,12 +1,23 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from config import get_settings
+from dependencies import require_auth
 from models import TradeCreate, TradeUpdate
 from repositories.summary_cache import clear_summary_cache
-from repositories.trades import COMBINED_HISTORY_ACCOUNT, create_trade, delete_trade, list_trades, update_trade
+from repositories.tickers import list_tickers
+from repositories.trades import (
+    COMBINED_HISTORY_ACCOUNT,
+    create_trade,
+    delete_trade,
+    get_trade,
+    list_trades,
+    update_trade,
+)
 from services.constants import TW_ACCOUNTS
 from services.fees import calc_tw_fee
-from services.prices import fetch_fugle_company_names_batch
+from services.prices import resolve_company_names
+from services.settlement import invalidate_for_trade
+from services.symbols import symbol_for
 
 router = APIRouter()
 
@@ -23,15 +34,22 @@ def prepare_trade_payload(payload: dict) -> dict:
     return payload
 
 
+def after_trade_change(*trades: dict | None) -> None:
+    """交易異動後：作廢受影響的 FIFO checkpoint，並清掉彙總快取。
+
+    checkpoint 作廢一定要做，否則下次計算會從一個已經不正確的狀態續算。
+    """
+    for trade in trades:
+        invalidate_for_trade(trade)
+    clear_summary_cache()
+
+
 @router.get("/{account}/ticker/{ticker}")
-async def get_ticker_info(account: str, ticker: str) -> dict:
+async def get_ticker_info(account: str, ticker: str, _: dict = Depends(require_auth)) -> dict:
     settings = get_settings()
     normalized = ticker.strip().upper()
-    company_name = None
-    if account in TW_ACCOUNTS and settings.fugle_ready:
-        names = await fetch_fugle_company_names_batch([normalized], settings.fugle_api_key)
-        company_name = names.get(normalized)
-    return {"ticker": normalized, "company_name": company_name}
+    names = await resolve_company_names(account, [normalized], settings.fugle_api_key)
+    return {"ticker": normalized, "company_name": names.get(normalized)}
 
 
 @router.get("/{account}")
@@ -40,48 +58,56 @@ async def get_trades(
     ticker: str | None = Query(default=None),
     start_date: str | None = Query(default=None),
     end_date: str | None = Query(default=None),
+    _: dict = Depends(require_auth),
 ) -> dict:
     trades = list_trades(account, ticker, start_date, end_date)
-    settings = get_settings()
-    if settings.fugle_ready and (account in TW_ACCOUNTS or account == COMBINED_HISTORY_ACCOUNT):
-        tickers = sorted(
-            {
-                str(row.get("ticker", "")).upper()
-                for row in trades
-                if row.get("ticker") and (account in TW_ACCOUNTS or row.get("account") in TW_ACCOUNTS)
-            }
-        )
-        names = await fetch_fugle_company_names_batch(tickers, settings.fugle_api_key)
-        trades = [
-            {
-                **row,
-                "company_name": names.get(str(row.get("ticker", "")).upper())
-                if account in TW_ACCOUNTS or row.get("account") in TW_ACCOUNTS
-                else row.get("company_name"),
-            }
+    if not trades:
+        return {"trades": [], "account": account}
+
+    # 公司名稱直接從 tickers 主檔讀，不再每次打 Fugle
+    tw_symbols = sorted(
+        {
+            symbol_for(row["account"], str(row.get("ticker", "")))
             for row in trades
-        ]
-    return {"trades": trades}
+            if row.get("ticker") and row.get("account") in TW_ACCOUNTS
+        }
+    )
+    known = list_tickers(tw_symbols) if tw_symbols else {}
+
+    enriched = []
+    for row in trades:
+        name = row.get("company_name")
+        if row.get("account") in TW_ACCOUNTS:
+            symbol = symbol_for(row["account"], str(row.get("ticker", "")))
+            name = (known.get(symbol) or {}).get("name") or name
+        enriched.append({**row, "company_name": name})
+
+    return {"trades": enriched, "account": account, "combined": account == COMBINED_HISTORY_ACCOUNT}
 
 
 @router.post("")
-def add_trade(trade: TradeCreate) -> dict:
+def add_trade(trade: TradeCreate, _: dict = Depends(require_auth)) -> dict:
     payload = prepare_trade_payload(trade.model_dump(mode="json"))
     created = create_trade(payload)
-    clear_summary_cache()
+    after_trade_change(created)
     return {"success": True, "trade": created}
 
 
 @router.patch("/{trade_id}")
-def patch_trade(trade_id: str, trade: TradeUpdate) -> dict:
+def patch_trade(trade_id: str, trade: TradeUpdate, _: dict = Depends(require_auth)) -> dict:
+    previous = get_trade(trade_id)
     payload = prepare_trade_payload(trade.model_dump(mode="json"))
     updated = update_trade(trade_id, payload)
-    clear_summary_cache()
+    # 舊值與新值都要作廢：日期或代號可能被改掉
+    after_trade_change(previous, updated)
     return {"success": True, "trade": updated}
 
 
 @router.delete("/{trade_id}")
-def remove_trade(trade_id: str) -> dict:
+def remove_trade(trade_id: str, _: dict = Depends(require_auth)) -> dict:
+    previous = get_trade(trade_id)
+    if not previous:
+        raise HTTPException(status_code=404, detail="Trade not found.")
     delete_trade(trade_id)
-    clear_summary_cache()
+    after_trade_change(previous)
     return {"success": True}

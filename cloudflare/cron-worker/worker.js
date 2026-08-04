@@ -50,8 +50,26 @@ function getScheduledJobPath(scheduledTime) {
   return taipeiTime.minute === 0 ? '/jobs/snapshot' : '/jobs/refresh'
 }
 
+// FIFO 結算：台北時間 03:00 與 15:00 各檢查一次。
+// 後端會自行判斷「距上次結算是否已滿 12 小時，且期間內有交易異動」，
+// 沒有異動就直接跳過，不會做白工。
+function shouldSettleNow(scheduledTime) {
+  const { hour, minute } = getTaipeiTimeParts(scheduledTime)
+  return minute < 15 && (hour === 3 || hour === 15)
+}
+
+const MANUAL_PATHS = {
+  '/snapshot': '/jobs/snapshot',
+  '/settle': '/jobs/settle',
+  '/refresh': '/jobs/refresh',
+}
+
 export default {
   async scheduled(event, env, ctx) {
+    if (shouldSettleNow(event.scheduledTime)) {
+      ctx.waitUntil(callBackend(env, '/jobs/settle'))
+    }
+
     const path = getScheduledJobPath(event.scheduledTime)
     if (!path) return
     ctx.waitUntil(callBackend(env, path))
@@ -63,7 +81,7 @@ export default {
     }
 
     const url = new URL(request.url)
-    const path = url.pathname === '/snapshot' ? '/jobs/snapshot' : '/jobs/refresh'
+    const path = MANUAL_PATHS[url.pathname] || '/jobs/refresh'
 
     try {
       const body = await callBackend(env, path)

@@ -1,28 +1,29 @@
+"""報價、匯率、公司名稱。
+
+A2 修正：原本的 PRICE_CACHE / RATE_CACHE / COMPANY_NAME_CACHE 是 module-level dict，
+在 Vercel serverless 上每個 instance 獨立且會被回收，實際命中率遠低於預期，
+統計數字在多 instance 下也沒有意義。
+
+現在的原則：
+- 跨請求的真實來源一律是資料庫（price_cache / fx_rates / tickers）。
+- 記憶體只做「同一次請求內」的 memo，用 PriceContext 明確傳遞。
+"""
+
 import asyncio
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 import httpx
 from fugle_marketdata import RestClient
 
+from repositories.fx_rates import get_fx_rate, upsert_fx_rate
 from repositories.price_cache import list_price_cache, upsert_price_cache_rows
-from services.constants import TW_ACCOUNTS
+from repositories.tickers import list_tickers, upsert_tickers
+from services.symbols import is_tw_account, symbol_for
 
-PRICE_CACHE: dict[str, dict] = {}
-RATE_CACHE: dict[str, float | str] = {}
-COMPANY_NAME_CACHE: dict[str, str] = {}
 PRICE_REFRESH_TTL_SECONDS = 10 * 60
 RATE_REFRESH_TTL_SECONDS = 60 * 60
-PRICE_FETCH_STATE = {
-    "in_progress": False,
-    "last_started_at": None,
-    "last_finished_at": None,
-    "last_requested": 0,
-    "last_fetched": 0,
-    "last_cached": 0,
-    "last_failed": 0,
-    "last_missing": 0,
-    "last_provider": None,
-}
+DEFAULT_USD_TWD = 31.316
 
 
 def _now_iso() -> str:
@@ -39,123 +40,97 @@ def _parse_datetime(value: object) -> datetime | None:
             parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
         except ValueError:
             return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
-def _cache_is_fresh(row: dict, ttl_seconds: int) -> bool:
-    fetched_at = _parse_datetime(row.get("fetched_at"))
-    if not fetched_at:
+def _is_fresh(fetched_at: object, ttl_seconds: int) -> bool:
+    parsed = _parse_datetime(fetched_at)
+    if not parsed:
         return False
-    age = (datetime.now(timezone.utc) - fetched_at).total_seconds()
-    return age <= ttl_seconds
+    return (datetime.now(timezone.utc) - parsed).total_seconds() <= ttl_seconds
 
 
-def reset_price_status() -> None:
-    PRICE_FETCH_STATE.update(
-        {
-            "in_progress": False,
-            "last_started_at": None,
-            "last_finished_at": None,
-            "last_requested": 0,
-            "last_fetched": 0,
-            "last_cached": 0,
-            "last_failed": 0,
-            "last_missing": 0,
-            "last_provider": None,
+@dataclass
+class PriceContext:
+    """單一請求 / 單一排程執行的作用域。用完即丟，不跨請求存活。"""
+
+    prices: dict[str, float | None] = field(default_factory=dict)
+    db_cache: dict[str, dict] = field(default_factory=dict)
+    stats: dict = field(
+        default_factory=lambda: {
+            "requested": 0,
+            "fetched": 0,
+            "cached": 0,
+            "failed": 0,
+            "missing": 0,
+            "providers": [],
+            "started_at": None,
+            "finished_at": None,
         }
     )
 
-
-def is_tw_account(account: str) -> bool:
-    return account in TW_ACCOUNTS
-
-
-def get_price_symbol(ticker: str, account: str) -> str:
-    normalized = ticker.strip().upper()
-    if is_tw_account(account):
-        return f"TW:{normalized}"
-    return normalized
+    def preload(self, symbols: list[str]) -> None:
+        missing = [s for s in symbols if s not in self.db_cache]
+        if missing:
+            self.db_cache.update(list_price_cache(missing))
 
 
-async def fetch_price(client: httpx.AsyncClient, ticker: str, symbol: str, api_key: str) -> tuple[str, float | None]:
-    url = "https://finnhub.io/api/v1/quote"
-    params = {"symbol": symbol, "token": api_key}
+# --------------------------------------------------------------------------
+# 報價
+# --------------------------------------------------------------------------
+
+
+async def fetch_finnhub_price(client: httpx.AsyncClient, ticker: str, api_key: str) -> tuple[str, float | None]:
     try:
-        response = await client.get(url, params=params, timeout=5)
+        response = await client.get(
+            "https://finnhub.io/api/v1/quote",
+            params={"symbol": ticker, "token": api_key},
+            timeout=5,
+        )
         response.raise_for_status()
-        data = response.json()
-        price = data.get("c")
+        price = response.json().get("c")
         return ticker, float(price) if price else None
     except Exception:
         return ticker, None
 
 
-def fetch_fugle_price_sync(ticker: str, api_key: str) -> float | None:
+def _fugle_price_sync(ticker: str, api_key: str) -> float | None:
     try:
         client = RestClient(api_key=api_key)
-        stock = client.stock.intraday.quote(symbol=ticker)
-        price = stock.get("lastPrice") or stock.get("closePrice") or stock.get("previousClose")
+        quote = client.stock.intraday.quote(symbol=ticker)
+        price = quote.get("lastPrice") or quote.get("closePrice") or quote.get("previousClose")
         return float(price) if price else None
     except Exception:
         return None
 
 
-async def fetch_fugle_price(ticker: str, api_key: str) -> tuple[str, float | None]:
-    price = await asyncio.to_thread(fetch_fugle_price_sync, ticker, api_key)
-    return ticker, price
-
-
-def fetch_fugle_company_name_sync(ticker: str, api_key: str) -> str | None:
+def _fugle_ticker_info_sync(ticker: str, api_key: str) -> dict | None:
     try:
         client = RestClient(api_key=api_key)
-        info = client.stock.intraday.ticker(symbol=ticker)
-        return info.get("name") or None
+        return client.stock.intraday.ticker(symbol=ticker)
     except Exception:
         return None
 
 
-async def fetch_fugle_company_names_batch(tickers: list[str], api_key: str) -> dict[str, str | None]:
+async def _fugle_prices(tickers: list[str], api_key: str) -> dict[str, float | None]:
     semaphore = asyncio.Semaphore(5)
 
-    async def fetch_one(ticker: str) -> tuple[str, str | None]:
-        if ticker in COMPANY_NAME_CACHE:
-            return ticker, COMPANY_NAME_CACHE[ticker]
+    async def one(ticker: str) -> tuple[str, float | None]:
         async with semaphore:
-            name = await asyncio.to_thread(fetch_fugle_company_name_sync, ticker, api_key)
-            if name:
-                COMPANY_NAME_CACHE[ticker] = name
-            return ticker, name
+            return ticker, await asyncio.to_thread(_fugle_price_sync, ticker, api_key)
 
-    pairs = await asyncio.gather(*(fetch_one(ticker) for ticker in tickers))
-    return dict(pairs)
+    return dict(await asyncio.gather(*(one(t) for t in tickers)))
 
 
-async def fetch_fugle_prices_batch(tickers: list[str], api_key: str) -> dict[str, float | None]:
-    semaphore = asyncio.Semaphore(5)
-
-    async def fetch_one(ticker: str) -> tuple[str, float | None]:
-        async with semaphore:
-            return await fetch_fugle_price(ticker, api_key)
-
-    pairs = await asyncio.gather(*(fetch_one(ticker) for ticker in tickers))
-    return dict(pairs)
-
-
-async def fetch_finnhub_prices_batch(
-    client: httpx.AsyncClient,
-    pairs: list[tuple[str, str]],
-    api_key: str,
-) -> dict[str, float | None]:
+async def _finnhub_prices(tickers: list[str], api_key: str) -> dict[str, float | None]:
     semaphore = asyncio.Semaphore(8)
 
-    async def fetch_one(ticker: str, symbol: str) -> tuple[str, float | None]:
+    async def one(client: httpx.AsyncClient, ticker: str) -> tuple[str, float | None]:
         async with semaphore:
-            return await fetch_price(client, ticker, symbol, api_key)
+            return await fetch_finnhub_price(client, ticker, api_key)
 
-    results = await asyncio.gather(*(fetch_one(ticker, symbol) for ticker, symbol in pairs))
-    return dict(results)
+    async with httpx.AsyncClient() as client:
+        return dict(await asyncio.gather(*(one(client, t) for t in tickers)))
 
 
 async def fetch_prices_batch(
@@ -163,132 +138,150 @@ async def fetch_prices_batch(
     account: str,
     finnhub_key: str,
     refresh: bool = False,
-    reset_state: bool = True,
     fugle_key: str = "",
-    request_cache: dict[str, float | None] | None = None,
-    db_cache: dict[str, dict] | None = None,
+    context: PriceContext | None = None,
 ) -> dict[str, float | None]:
-    if reset_state:
-        reset_price_status()
+    """回傳 {ticker: price}。refresh=False 時只讀資料庫快取，不打外部 API。"""
+    context = context or PriceContext()
+    unique = sorted({t.strip().upper() for t in tickers if t and t.strip()})
+    if not unique:
+        return {}
+
+    symbol_by_ticker = {t: symbol_for(account, t) for t in unique}
+    context.preload(list(symbol_by_ticker.values()))
+    context.stats["requested"] += len(unique)
 
     results: dict[str, float | None] = {}
-    unique_tickers = sorted({ticker.strip().upper() for ticker in tickers if ticker and ticker.strip()})
-    to_fetch: list[tuple[str, str]] = []
-    symbol_by_ticker = {ticker: get_price_symbol(ticker, account) for ticker in unique_tickers}
-    db_cache = db_cache if db_cache is not None else list_price_cache(list(symbol_by_ticker.values()))
-    cached_count = 0
-    request_cache = request_cache if request_cache is not None else {}
+    to_fetch: list[str] = []
 
-    for ticker in unique_tickers:
+    for ticker in unique:
         symbol = symbol_by_ticker[ticker]
-        cached = PRICE_CACHE.get(symbol)
-        db_row = db_cache.get(symbol)
-        if symbol in request_cache:
-            results[ticker] = request_cache[symbol]
-            cached_count += 1
-        elif cached and (not refresh or _cache_is_fresh(cached, PRICE_REFRESH_TTL_SECONDS)):
-            results[ticker] = cached["price"]
-            cached_count += 1
-        elif db_row and (not refresh or _cache_is_fresh(db_row, PRICE_REFRESH_TTL_SECONDS)):
-            price = float(db_row["price"]) if db_row.get("price") is not None else None
-            results[ticker] = price
-            cached_count += 1
-            PRICE_CACHE[symbol] = {
-                "ticker": ticker,
-                "symbol": symbol,
-                "account": db_row.get("account") or account,
-                "price": price,
-                "fetched_at": db_row.get("fetched_at"),
-            }
+        if symbol in context.prices:
+            results[ticker] = context.prices[symbol]
+            context.stats["cached"] += 1
+            continue
+
+        row = context.db_cache.get(symbol)
+        row_price = float(row["price"]) if row and row.get("price") is not None else None
+
+        if row and (not refresh or _is_fresh(row.get("fetched_at"), PRICE_REFRESH_TTL_SECONDS)):
+            results[ticker] = row_price
+            context.prices[symbol] = row_price
+            context.stats["cached"] += 1
         elif refresh:
-            to_fetch.append((ticker, symbol))
+            to_fetch.append(ticker)
         else:
             results[ticker] = None
-            PRICE_FETCH_STATE["last_missing"] += 1
+            context.stats["missing"] += 1
 
-    PRICE_FETCH_STATE["in_progress"] = PRICE_FETCH_STATE["in_progress"] or bool(to_fetch)
-    PRICE_FETCH_STATE["last_started_at"] = _now_iso() if to_fetch and not PRICE_FETCH_STATE["last_started_at"] else PRICE_FETCH_STATE["last_started_at"]
-    PRICE_FETCH_STATE["last_requested"] += len(unique_tickers)
-    PRICE_FETCH_STATE["last_cached"] += cached_count
-    PRICE_FETCH_STATE["last_provider"] = "fugle" if is_tw_account(account) else "finnhub"
+    if not to_fetch:
+        return results
 
-    if to_fetch:
-        cache_rows: list[dict] = []
-        if is_tw_account(account):
-            fetched_prices = await fetch_fugle_prices_batch([ticker for ticker, _ in to_fetch], fugle_key)
-            for ticker, symbol in to_fetch:
-                price = fetched_prices.get(ticker)
-                if price is None:
-                    PRICE_FETCH_STATE["last_failed"] += 1
-                    fallback = PRICE_CACHE.get(symbol) or db_cache.get(symbol)
-                    results[ticker] = float(fallback["price"]) if fallback and fallback.get("price") is not None else None
-                else:
-                    results[ticker] = price
-                    fetched_at = _now_iso()
-                    PRICE_CACHE[symbol] = {
-                        "ticker": ticker,
-                        "symbol": symbol,
-                        "account": account,
-                        "price": price,
-                        "currency": "TWD",
-                        "fetched_at": fetched_at,
-                    }
-                    request_cache[symbol] = price
-                    cache_rows.append(
-                        {
-                            "symbol": symbol,
-                            "ticker": ticker,
-                            "account": account,
-                            "price": price,
-                            "currency": "TWD",
-                            "fetched_at": fetched_at,
-                            "source": "fugle",
-                        }
-                    )
-                    PRICE_FETCH_STATE["last_fetched"] += 1
-        else:
-            async with httpx.AsyncClient() as client:
-                fetched_prices = await fetch_finnhub_prices_batch(client, to_fetch, finnhub_key)
-                for ticker, symbol in to_fetch:
-                    price = fetched_prices.get(ticker)
-                    if price is None:
-                        PRICE_FETCH_STATE["last_failed"] += 1
-                        fallback = PRICE_CACHE.get(symbol) or db_cache.get(symbol)
-                        results[ticker] = float(fallback["price"]) if fallback and fallback.get("price") is not None else None
-                    else:
-                        results[ticker] = price
-                        fetched_at = _now_iso()
-                        PRICE_CACHE[symbol] = {
-                            "ticker": ticker,
-                            "symbol": symbol,
-                            "account": account,
-                            "price": price,
-                            "currency": "USD",
-                            "fetched_at": fetched_at,
-                        }
-                        request_cache[symbol] = price
-                        cache_rows.append(
-                            {
-                                "symbol": symbol,
-                                "ticker": ticker,
-                                "account": account,
-                                "price": price,
-                                "currency": "USD",
-                                "fetched_at": fetched_at,
-                                "source": "finnhub",
-                            }
-                        )
-                        PRICE_FETCH_STATE["last_fetched"] += 1
+    context.stats["started_at"] = context.stats["started_at"] or _now_iso()
+    tw = is_tw_account(account)
+    provider = "fugle" if tw else "finnhub"
+    if provider not in context.stats["providers"]:
+        context.stats["providers"].append(provider)
 
-        upsert_price_cache_rows(cache_rows)
+    fetched = (
+        await _fugle_prices(to_fetch, fugle_key)
+        if tw
+        else await _finnhub_prices(to_fetch, finnhub_key)
+    )
 
-        PRICE_FETCH_STATE["in_progress"] = False
-        PRICE_FETCH_STATE["last_finished_at"] = _now_iso()
+    currency = "TWD" if tw else "USD"
+    rows = []
+    for ticker in to_fetch:
+        symbol = symbol_by_ticker[ticker]
+        price = fetched.get(ticker)
+        if price is None:
+            context.stats["failed"] += 1
+            stale = context.db_cache.get(symbol)
+            results[ticker] = float(stale["price"]) if stale and stale.get("price") is not None else None
+            continue
 
+        results[ticker] = price
+        context.prices[symbol] = price
+        context.stats["fetched"] += 1
+        rows.append(
+            {
+                "symbol": symbol,
+                "ticker": ticker,
+                "account": account,
+                "price": price,
+                "currency": currency,
+                "fetched_at": _now_iso(),
+                "source": provider,
+            }
+        )
+
+    upsert_price_cache_rows(rows)
+    context.stats["finished_at"] = _now_iso()
     return results
 
 
-async def fetch_exchange_rate_api_usd_twd(client: httpx.AsyncClient) -> float:
+# --------------------------------------------------------------------------
+# 公司名稱（改存 tickers 主檔，不再用記憶體 dict）
+# --------------------------------------------------------------------------
+
+
+async def resolve_company_names(
+    account: str,
+    tickers: list[str],
+    fugle_key: str = "",
+) -> dict[str, str | None]:
+    unique = sorted({t.strip().upper() for t in tickers if t and t.strip()})
+    if not unique:
+        return {}
+
+    symbol_by_ticker = {t: symbol_for(account, t) for t in unique}
+    known = list_tickers(list(symbol_by_ticker.values()))
+    names: dict[str, str | None] = {
+        t: (known.get(s) or {}).get("name") for t, s in symbol_by_ticker.items()
+    }
+
+    missing = [t for t, name in names.items() if not name]
+    if not missing or not is_tw_account(account) or not fugle_key:
+        return names
+
+    semaphore = asyncio.Semaphore(5)
+
+    async def one(ticker: str) -> tuple[str, dict | None]:
+        async with semaphore:
+            return ticker, await asyncio.to_thread(_fugle_ticker_info_sync, ticker, fugle_key)
+
+    fetched = dict(await asyncio.gather(*(one(t) for t in missing)))
+
+    rows = []
+    for ticker, info in fetched.items():
+        if not info:
+            continue
+        name = info.get("name")
+        if not name:
+            continue
+        names[ticker] = name
+        market = str(info.get("market") or info.get("exchange") or "").upper()
+        rows.append(
+            {
+                "symbol": symbol_by_ticker[ticker],
+                "ticker": ticker,
+                "name": name,
+                "market": "TPEX" if market in {"OTC", "TPEX"} else "TWSE",
+                "currency": "TWD",
+                "updated_at": _now_iso(),
+            }
+        )
+
+    upsert_tickers(rows)
+    return names
+
+
+# --------------------------------------------------------------------------
+# 匯率（落地到 fx_rates 表）
+# --------------------------------------------------------------------------
+
+
+async def _exchangerate_api(client: httpx.AsyncClient) -> float:
     response = await client.get("https://open.er-api.com/v6/latest/USD", timeout=8)
     response.raise_for_status()
     data = response.json()
@@ -298,7 +291,7 @@ async def fetch_exchange_rate_api_usd_twd(client: httpx.AsyncClient) -> float:
     return float(rate)
 
 
-async def fetch_currency_api_usd_twd(client: httpx.AsyncClient) -> float:
+async def _currency_api(client: httpx.AsyncClient) -> float:
     response = await client.get(
         "https://cdn.jsdelivr.net/gh/fawazahmed0/currency-api@1/latest/currencies/usd/twd.json",
         timeout=8,
@@ -312,41 +305,35 @@ async def fetch_currency_api_usd_twd(client: httpx.AsyncClient) -> float:
 
 
 async def fetch_usd_rate(api_key: str = "", refresh: bool = False) -> float:
-    if RATE_CACHE.get("usd_twd") and (
-        not refresh or _cache_is_fresh({"fetched_at": RATE_CACHE.get("fetched_at")}, RATE_REFRESH_TTL_SECONDS)
-    ):
-        return float(RATE_CACHE["usd_twd"])
+    stored = get_fx_rate()
+    stored_rate = float(stored["rate"]) if stored and stored.get("rate") is not None else None
 
-    fallback_rate = RATE_CACHE.get("usd_twd")
-    errors: list[str] = []
+    if stored_rate and (not refresh or _is_fresh(stored.get("fetched_at"), RATE_REFRESH_TTL_SECONDS)):
+        return stored_rate
+
+    if not refresh:
+        return stored_rate or DEFAULT_USD_TWD
+
     async with httpx.AsyncClient() as client:
-        for source, fetcher in (
-            ("exchangerate-api", fetch_exchange_rate_api_usd_twd),
-            ("currency-api", fetch_currency_api_usd_twd),
-        ):
+        for source, fetcher in (("exchangerate-api", _exchangerate_api), ("currency-api", _currency_api)):
             try:
                 rate = await fetcher(client)
-                RATE_CACHE["usd_twd"] = rate
-                RATE_CACHE["fetched_at"] = _now_iso()
-                RATE_CACHE["source"] = source
-                RATE_CACHE.pop("error", None)
+                upsert_fx_rate(rate, source)
                 return rate
-            except Exception as exc:
-                errors.append(f"{source}: {type(exc).__name__}")
+            except Exception:
+                continue
 
-    RATE_CACHE["error"] = "; ".join(errors)
-    if fallback_rate:
-        return float(fallback_rate)
-    return 31.316
+    return stored_rate or DEFAULT_USD_TWD
 
 
-def get_price_status() -> dict:
-    return {
-        **PRICE_FETCH_STATE,
-        "cache_size": len(PRICE_CACHE),
-        "cached_symbols": sorted(PRICE_CACHE.keys()),
-        "usd_rate_cached": bool(RATE_CACHE.get("usd_twd")),
-        "usd_rate_fetched_at": RATE_CACHE.get("fetched_at"),
-        "usd_rate_source": RATE_CACHE.get("source"),
-        "usd_rate_error": RATE_CACHE.get("error"),
+def get_price_status(context: PriceContext | None = None) -> dict:
+    """報價狀態改以資料庫為準；context 提供本次執行的統計。"""
+    stored = get_fx_rate()
+    status: dict = {
+        "usd_rate": float(stored["rate"]) if stored and stored.get("rate") is not None else None,
+        "usd_rate_fetched_at": stored.get("fetched_at") if stored else None,
+        "usd_rate_source": stored.get("source") if stored else None,
     }
+    if context:
+        status.update(context.stats)
+    return status

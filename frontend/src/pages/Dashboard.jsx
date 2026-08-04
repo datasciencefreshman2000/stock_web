@@ -1,113 +1,30 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Eye, EyeOff, RefreshCw } from 'lucide-react'
 
 import AssetPieChart from '../components/AssetPieChart'
+import CashRatioSection from '../components/dashboard/CashRatioSection'
 import PriceStatus from '../components/PriceStatus'
 import { ErrorBlock, LoadingBlock } from '../components/StateBlock'
 import SummaryCard from '../components/SummaryCard'
 import { maskAmount, usePrivacy } from '../context/PrivacyContext'
-import { useSummary } from '../hooks/useSummary'
+import { useRefreshAll, useSummaryQuery } from '../hooks/queries'
+import {
+  investmentCashTwd,
+  investmentCostTwd,
+  investmentPnlTwd,
+  investmentTotalTwd,
+  investmentValueTwd,
+} from '../utils/investments'
 import { money, percent, pnlClass } from '../utils/format'
 
-function CashRatioSection({ ownAccounts, hideAmounts }) {
-  const rows = Object.entries(ownAccounts).map(([name, row]) => {
-    const cash = Math.max(Number(row.inferred_cash ?? 0), 0)
-    const stocks = Math.max(Number(row.market_value ?? 0), 0)
-    const total = cash + stocks
-    const cashRatio = total > 0 ? cash / total : 0
-    const stockRatio = 1 - cashRatio
-    const currency = name === '美股' ? 'USD' : 'TWD'
-    return { name, cash, stocks, total, cashRatio, stockRatio, currency }
-  })
-
-  if (!rows.length) return null
-
-  return (
-    <section className="rounded-md border border-line bg-surface">
-      <div className="border-b border-line bg-panel px-4 py-3 text-sm font-medium">帳戶現金比例</div>
-      <div className="divide-y divide-line">
-        {rows.map((row) => (
-          <div key={row.name} className="px-4 py-4">
-            <div className="mb-2 flex items-center justify-between text-sm">
-              <span className="font-medium text-white">{row.name}</span>
-              <span className="text-slate-400 tabular-nums">
-                現金 <span className="text-white">{(row.cashRatio * 100).toFixed(1)}%</span>
-                {' / '}
-                股票 <span className="text-white">{(row.stockRatio * 100).toFixed(1)}%</span>
-              </span>
-            </div>
-            <div className="mb-3 flex h-2.5 overflow-hidden rounded-full bg-line">
-              <div
-                className="rounded-l-full bg-sky-400 transition-all"
-                style={{ width: `${row.stockRatio * 100}%` }}
-              />
-              <div
-                className="rounded-r-full bg-amber-400 transition-all"
-                style={{ width: `${row.cashRatio * 100}%` }}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3 text-xs">
-              <div className="flex items-center gap-2">
-                <span className="h-2 w-2 rounded-sm bg-sky-400" />
-                <div>
-                  <div className="text-slate-400">股票市值</div>
-                  <div className="text-slate-100">{hideAmounts ? '••••' : money(row.stocks, row.currency)}</div>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="h-2 w-2 rounded-sm bg-amber-400" />
-                <div>
-                  <div className="text-slate-400">帳戶現金</div>
-                  <div className="text-slate-100">{hideAmounts ? '••••' : money(row.cash, row.currency)}</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
-  )
-}
-
-function investmentValueTwd(row) {
-  return Number(row.value_twd ?? row.value ?? 0)
-}
-
-function investmentCashTwd(row) {
-  return Number(row.cash_amount_twd ?? row.cash_amount ?? 0)
-}
-
-function investmentCostTwd(row) {
-  return Number(row.cost_twd ?? row.cost ?? 0)
-}
-
-function investmentTotalTwd(row) {
-  return Number(row.total_value_twd ?? investmentValueTwd(row) + investmentCashTwd(row))
-}
-
-function investmentPnlTwd(row) {
-  return Number(row.pnl_twd ?? investmentTotalTwd(row) - investmentCostTwd(row))
-}
-
 export default function Dashboard() {
-  const [summaryRequest, setSummaryRequest] = useState({ token: 0, refresh: false })
   const [selectedInvestmentGroup, setSelectedInvestmentGroup] = useState(null)
   const [summaryExpanded, setSummaryExpanded] = useState(false)
   const { hideAmounts, toggleHideAmounts } = usePrivacy()
-  const { data, error, loading } = useSummary(summaryRequest.token, summaryRequest.refresh)
-  const refreshInBackground = Boolean(data?.refresh_queued || data?.summary_refresh?.in_progress)
+  const { data, error, isLoading: loading } = useSummaryQuery()
 
-  function refreshNow() {
-    setSummaryRequest((current) => ({ token: current.token + 1, refresh: true }))
-  }
-
-  useEffect(() => {
-    if (!refreshInBackground) return undefined
-    const timer = setTimeout(() => {
-      setSummaryRequest((current) => ({ token: current.token + 1, refresh: false }))
-    }, 5000)
-    return () => clearTimeout(timer)
-  }, [refreshInBackground, data?.summary_cached_at])
+  // 刷新是同步的：等後端抓完價、重算完，快取失效後畫面自動重讀
+  const { refreshing: refreshInBackground, refreshNow } = useRefreshAll()
 
   const today = new Intl.DateTimeFormat('zh-TW', {
     year: 'numeric',
@@ -249,7 +166,7 @@ export default function Dashboard() {
             className={`flex items-center gap-1.5 rounded-md border border-sky-500 bg-sky-500/15 px-3 py-2 text-sm font-medium text-sky-100 transition active:scale-[0.99] disabled:opacity-70 ${loading || refreshInBackground ? 'submit-pulse' : 'hover:bg-sky-500/20'}`}
           >
             <RefreshCw size={14} className={loading || refreshInBackground ? 'animate-spin' : ''} />
-            <span className="hidden sm:inline">{refreshInBackground ? '背景更新中' : '刷新股價'}</span>
+            <span className="hidden sm:inline">{refreshInBackground ? '更新中…' : '刷新股價'}</span>
           </button>
         </div>
       </header>

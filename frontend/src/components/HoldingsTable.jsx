@@ -1,92 +1,11 @@
-import { X } from 'lucide-react'
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 
-import { api } from '../api/client'
+import HoldingTradeDetails from './holdings/HoldingTradeDetails'
+import MobileCardList from './holdings/MobileCardList'
+import { ALL_COLUMNS, COMPACT_COLUMNS, MOBILE_SORT_KEYS } from './holdings/columns'
 import { maskAmount, usePrivacy } from '../context/PrivacyContext'
+import { useBuyLotsQuery } from '../hooks/queries'
 import { money, number, percent, pnlClass } from '../utils/format'
-
-const ALL_COLUMNS = [
-  { key: 'ticker', label: '代號', align: 'left' },
-  { key: 'qty', label: '股數' },
-  { key: 'avg_price', label: '均價' },
-  { key: 'current_price', label: '現價' },
-  { key: 'market_value', label: '市值' },
-  { key: 'pnl', label: '損益' },
-  { key: 'pnl_pct', label: '損益%' },
-  { key: 'weight', label: '佔比' },
-]
-
-const MOBILE_SORT_KEYS = ['market_value', 'pnl_pct', 'ticker']
-const COMPACT_COLUMNS = ['ticker', 'market_value', 'pnl', 'pnl_pct', 'weight']
-
-function tradeSortKey(trade) {
-  const isSell = Number(trade.sell_qty || 0) > 0 ? 1 : 0
-  return [
-    String(trade.date || ''),
-    isSell,
-    String(trade.created_at || ''),
-    String(trade.id || ''),
-  ]
-}
-
-function compareTradesForFifo(a, b) {
-  const left = tradeSortKey(a)
-  const right = tradeSortKey(b)
-  for (let index = 0; index < left.length; index += 1) {
-    if (left[index] < right[index]) return -1
-    if (left[index] > right[index]) return 1
-  }
-  return 0
-}
-
-function buildBuyLotDetails(trades) {
-  const buyRows = []
-  const lots = []
-  let unmatchedSellBalance = 0
-
-  ;[...trades].sort(compareTradesForFifo).forEach((trade) => {
-    const buyQty = Number(trade.buy_qty || 0)
-    const sellQty = Number(trade.sell_qty || 0)
-    const price = Number(trade.price || 0)
-
-    if (buyQty > 0) {
-      const matchedGapQty = Math.min(buyQty, unmatchedSellBalance)
-      unmatchedSellBalance -= matchedGapQty
-      const longQty = buyQty - matchedGapQty
-      const row = {
-        ...trade,
-        original_qty: buyQty,
-        fifo_qty: longQty,
-        sold_qty: 0,
-        remaining_qty: longQty,
-        sell_value: 0,
-      }
-      buyRows.push(row)
-      if (longQty > 0) {
-        lots.push({ row, remaining_qty: longQty })
-      }
-    }
-
-    if (sellQty > 0) {
-      let remaining = sellQty
-      while (remaining > 0 && lots.length) {
-        const lot = lots[0]
-        const qty = Math.min(lot.remaining_qty, remaining)
-        lot.row.sold_qty += qty
-        lot.row.remaining_qty -= qty
-        lot.row.sell_value += qty * price
-        lot.remaining_qty -= qty
-        remaining -= qty
-        if (lot.remaining_qty <= 1e-7) lots.shift()
-      }
-      if (remaining > 0) {
-        unmatchedSellBalance += remaining
-      }
-    }
-  })
-
-  return buyRows
-}
 
 export default function HoldingsTable({ holdings, account, currency = 'TWD' }) {
   const { hideAmounts } = usePrivacy()
@@ -94,10 +13,13 @@ export default function HoldingsTable({ holdings, account, currency = 'TWD' }) {
   const [expanded, setExpanded] = useState(false)
   const [compact, setCompact] = useState(false)
   const [activeTicker, setActiveTicker] = useState('')
-  const [detailTrades, setDetailTrades] = useState([])
-  const [detailLoading, setDetailLoading] = useState(false)
-  const [detailError, setDetailError] = useState('')
   const detailRef = useRef(null)
+
+  // 買入明細的 FIFO 由後端計算（含股票分割調整），前端只負責顯示
+  const lotsQuery = useBuyLotsQuery(account, activeTicker)
+  const detailTrades = lotsQuery.data?.trades || []
+  const detailLoading = lotsQuery.isLoading
+  const detailError = lotsQuery.error ? lotsQuery.error.message || '讀取明細失敗' : ''
   const visibleColumns = compact ? ALL_COLUMNS.filter((column) => COMPACT_COLUMNS.includes(column.key)) : ALL_COLUMNS
 
   const sortedHoldings = useMemo(() => {
@@ -120,32 +42,6 @@ export default function HoldingsTable({ holdings, account, currency = 'TWD' }) {
       direction: current.key === key && current.direction === 'desc' ? 'asc' : 'desc',
     }))
   }
-
-  useEffect(() => {
-    if (!activeTicker || !account) {
-      setDetailTrades([])
-      return
-    }
-    let active = true
-    setDetailLoading(true)
-    setDetailError('')
-    api
-      .getTrades(account, { ticker: activeTicker })
-      .then((data) => {
-        if (!active) return
-        setDetailTrades(buildBuyLotDetails(data.trades || []))
-      })
-      .catch((err) => {
-        if (active) setDetailError(err.message || '讀取明細失敗')
-      })
-      .finally(() => {
-        if (active) setDetailLoading(false)
-      })
-
-    return () => {
-      active = false
-    }
-  }, [account, activeTicker])
 
   useEffect(() => {
     if (!activeTicker) return
@@ -291,119 +187,6 @@ export default function HoldingsTable({ holdings, account, currency = 'TWD' }) {
           </tbody>
         </table>
       </div>
-    </div>
-  )
-}
-
-function MobileCardList({ holdings, account, currency, hideAmounts, activeTicker, onToggle, renderDetail }) {
-  return (
-    <div className="divide-y divide-line">
-      {holdings.map((row) => (
-        <div key={row.ticker} className={`px-3 py-2 transition-colors ${activeTicker === row.ticker ? 'bg-sky-500/5' : 'hover:bg-sky-500/5'}`}>
-          <button type="button" onClick={() => onToggle(row.ticker)} className="group mb-1 flex min-h-0 w-full items-start justify-between gap-3 rounded-md px-1 py-1 text-left transition hover:-translate-y-0.5 hover:bg-sky-500/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400/70 active:scale-[0.99]">
-            <div className="min-w-0">
-              <div className="flex min-w-0 items-baseline gap-2">
-                <span className="shrink-0 text-sm font-medium text-white underline-offset-4 group-hover:text-sky-100 group-hover:underline">{row.ticker}</span>
-                {account === '台股' && row.company_name ? <span className="truncate text-[11px] text-slate-400">{row.company_name}</span> : null}
-              </div>
-              {account !== '台股' && row.company_name ? <div className="truncate text-[11px] text-slate-400">{row.company_name}</div> : null}
-            </div>
-            <div className="shrink-0 text-right text-[11px] text-slate-400">
-              <div className="leading-tight">佔比</div>
-              <div className="text-sm font-semibold leading-tight text-white">{percent(row.weight)}</div>
-            </div>
-          </button>
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <Metric label="市值" value={hideAmounts ? '••••' : money(row.market_value, currency)} inline />
-            <Metric label="損益" value={percent(row.pnl_pct)} accent={pnlClass(row.pnl)} inline />
-          </div>
-          {activeTicker === row.ticker ? renderDetail(row, 'mt-3') : null}
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function HoldingTradeDetails({ row, trades, loading, error, currency, hideAmounts, onClose, detailRef, className = '' }) {
-  const currentPrice = Number(row.current_price || 0)
-
-  return (
-    <div ref={detailRef} className={`rounded-md border border-line bg-panel/70 p-3 ${className}`}>
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <div>
-          <div className="text-sm font-medium text-white">{row.ticker} 買入紀錄</div>
-          <div className="text-xs text-slate-500">以目前現價估算每筆買入損益</div>
-        </div>
-        <button type="button" onClick={onClose} className="rounded-md border border-line p-1.5 text-slate-400 hover:border-sky-500 hover:text-white" aria-label="收起明細">
-          <X size={15} />
-        </button>
-      </div>
-      {loading ? <div className="text-xs text-slate-400">讀取買入紀錄中...</div> : null}
-      {error ? <div className="text-xs text-rose-300">{error}</div> : null}
-      {!loading && !error && !trades.length ? <div className="text-xs text-slate-500">沒有買入紀錄。</div> : null}
-      {!loading && !error && trades.length ? (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[700px] text-xs">
-            <thead className="text-slate-400">
-              <tr>
-                <th className="py-2 text-left">日期</th>
-                <th className="py-2 text-right">買入股數</th>
-                <th className="py-2 text-right">已賣</th>
-                <th className="py-2 text-right">剩餘</th>
-                <th className="py-2 text-right">買入均價</th>
-                <th className="py-2 text-right">賣出均價</th>
-                <th className="py-2 text-right">損益</th>
-                <th className="py-2 text-right">損益%</th>
-              </tr>
-            </thead>
-            <tbody>
-              {trades.map((trade) => {
-                const qty = Number(trade.original_qty ?? trade.buy_qty ?? 0)
-                const soldQty = Number(trade.sold_qty || 0)
-                const remainingQty = Number(trade.remaining_qty ?? qty)
-                const activeQty = remainingQty > 1e-7 ? remainingQty : 0
-                const price = Number(trade.price || 0)
-                const avgSellPrice = soldQty > 0 ? Number(trade.sell_value || 0) / soldQty : null
-                const realizedPnl = soldQty > 0 ? Number(trade.sell_value || 0) - soldQty * price : 0
-                const unrealizedPnl = activeQty > 0 ? (currentPrice - price) * activeQty : 0
-                const pnl = realizedPnl + unrealizedPnl
-                const costBasis = price * (soldQty + activeQty)
-                const pnlRatio = costBasis > 0 ? pnl / costBasis : null
-                return (
-                  <tr key={trade.id || `${trade.date}-${trade.price}-${trade.buy_qty}`} className="border-t border-line/70">
-                    <td className="py-2 text-slate-300">{trade.date || '--'}</td>
-                    <td className="py-2 text-right text-slate-300">{number(qty, 4)}</td>
-                    <td className="py-2 text-right text-slate-300">{number(soldQty, 4)}</td>
-                    <td className="py-2 text-right text-slate-300">{number(activeQty, 4)}</td>
-                    <td className="py-2 text-right text-slate-300">{hideAmounts ? '••••' : number(price, 2)}</td>
-                    <td className="py-2 text-right text-slate-300">{hideAmounts ? (soldQty > 0 ? '••••' : '--') : avgSellPrice ? number(avgSellPrice, 2) : '--'}</td>
-                    <td className={`py-2 text-right ${pnlClass(pnl)}`}>{hideAmounts ? maskAmount(money(pnl, currency)) : money(pnl, currency)}</td>
-                    <td className={`py-2 text-right ${pnlClass(pnl)}`}>{percent(pnlRatio)}</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
-function Metric({ label, value, accent = 'text-slate-100', inline = false }) {
-  if (inline) {
-    return (
-      <div className="flex min-w-0 items-center justify-between gap-2 rounded-md bg-panel/50 px-2 py-1.5">
-        <div className="shrink-0 text-slate-400">{label}</div>
-        <div className={`min-w-0 truncate text-right tabular-nums ${accent}`}>{value}</div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="min-w-0">
-      <div className="text-slate-400">{label}</div>
-      <div className={`truncate tabular-nums ${accent}`}>{value}</div>
     </div>
   )
 }

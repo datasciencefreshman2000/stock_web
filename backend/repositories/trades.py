@@ -44,6 +44,26 @@ def list_trades(
     return rows
 
 
+def get_trade(trade_id: str) -> dict | None:
+    response = get_supabase().table("trades").select("*").eq("id", trade_id).limit(1).execute()
+    rows = response.data or []
+    return rows[0] if rows else None
+
+
+def latest_trade_change_at() -> str | None:
+    """最近一次交易異動時間（新增或編輯）。用來決定要不要重新結算 FIFO。"""
+    response = (
+        get_supabase()
+        .table("trades")
+        .select("updated_at")
+        .order("updated_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    rows = response.data or []
+    return rows[0].get("updated_at") if rows else None
+
+
 def create_trade(payload: dict) -> dict:
     if payload.get("account"):
         payload["account"] = normalize_account(payload["account"])

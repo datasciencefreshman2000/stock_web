@@ -31,7 +31,37 @@ npm install
 npm run dev
 ```
 
+> 新增了 `@tanstack/react-query` 相依，第一次拉到這版請務必先跑一次 `npm install`。
+
 請先複製 `.env.example` 成根目錄的 `.env`，並填入 Supabase 與 Finnhub 設定。
+
+## 網站登入
+
+所有 `/api/*` 端點（除了 `/api/health`）都需要登入。**未設定認證時 API 會一律回 503**，
+不會在沒有保護的狀態下對外提供資料。
+
+產生密碼雜湊與 JWT secret：
+
+```bash
+cd backend
+python scripts/hash_password.py
+```
+
+把輸出的 `APP_PASSWORD_HASH` 與 `JWT_SECRET` 填進 `.env` 與 Vercel 環境變數。
+本機開發若不想每次登入，可設 `AUTH_DISABLED=true`（**絕對不要**設在正式環境）。
+
+## 資料刷新流程
+
+刷新責任集中在排程與手動刷新端點，所有 GET 端點一律只讀快取：
+
+| 端點 | 誰呼叫 | 做什麼 |
+|------|--------|--------|
+| `POST /api/jobs/refresh` | Cloudflare cron / 前端刷新按鈕 | 抓最新報價、重算、寫快取 |
+| `POST /api/jobs/snapshot` | Cloudflare cron（整點） | 同上 + 寫入 `account_snapshots` |
+| `POST /api/jobs/settle` | Cloudflare cron（03:00 / 15:00） | FIFO checkpoint 結算（12 小時內有異動才做） |
+| `GET /api/jobs/status` | 除錯用 | 各排程最後執行狀況 |
+
+排程端點接受 `X-Cron-Secret` 或使用者 JWT。
 
 ## 需要提供的設定
 
@@ -41,8 +71,20 @@ npm run dev
 - `SUPABASE_SERVICE_KEY`
 - `FINNHUB_KEY`
 - `FUGLE_API_KEY`
+- `APP_PASSWORD_HASH`、`JWT_SECRET`（見上方「網站登入」）
+- `CRON_SECRET`
 
 Supabase 需要先建立 `trades`、`manual_values`、`price_cache`、`cash_accounts`、`manual_investments`，欄位可參考 `backend/sql/schema.sql`。
+
+## 測試
+
+```bash
+cd backend
+python -m pytest tests/ -q
+```
+
+`tests/test_settlement.py` 有一條關鍵不變式：**從 checkpoint 續算的結果必須等於全量重算**。
+只要這條測試通過，FIFO checkpoint 就只是效能優化，不會影響金額正確性。
 
 ## Supabase 連線方式
 

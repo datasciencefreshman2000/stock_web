@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import HoldingsTable from '../components/HoldingsTable'
 import ManualValueEditor from '../components/ManualValueEditor'
@@ -6,9 +6,7 @@ import PriceStatus from '../components/PriceStatus'
 import { ErrorBlock, LoadingBlock } from '../components/StateBlock'
 import { ACCOUNT_TABS } from '../constants'
 import { maskAmount, usePrivacy } from '../context/PrivacyContext'
-import { useAsync } from '../hooks/useAsync'
-import { usePortfolio } from '../hooks/usePortfolio'
-import { api } from '../api/client'
+import { useInvalidateMoney, useManualQuery, usePortfolioQuery, useRefreshAll } from '../hooks/queries'
 import { money, percent, pnlClass } from '../utils/format'
 
 function MiniMetric({ label, value, accent, onClick, dense = false, emphasis = false }) {
@@ -66,14 +64,17 @@ function StockCashBar({ stocks, cash, total, currency, hideAmounts }) {
 export default function Holdings() {
   const { hideAmounts } = usePrivacy()
   const [tab, setTab] = useState(ACCOUNT_TABS[0])
-  const [portfolioRequest, setPortfolioRequest] = useState({ token: 0, refresh: false })
   const [metricsExpanded, setMetricsExpanded] = useState(false)
-  const initialTabRef = useRef(true)
   const isManual = tab === ACCOUNT_TABS[3]
   const portfolioAccount = isManual ? ACCOUNT_TABS[0] : tab
-  const portfolio = usePortfolio(portfolioAccount, portfolioRequest.token, portfolioRequest.refresh, !isManual)
-  const manual = useAsync(() => api.getManual(), [])
-  const portfolioRefreshInBackground = Boolean(portfolio.data?.refresh_queued || portfolio.data?.portfolio_refresh?.in_progress)
+  const portfolioQuery = usePortfolioQuery(portfolioAccount, !isManual)
+  const manualQuery = useManualQuery()
+
+  // 統一成舊有的 { data, error, loading, reload } 形狀，下面的畫面程式碼不用改
+  const portfolio = { data: portfolioQuery.data, error: portfolioQuery.error, loading: portfolioQuery.isLoading, reload: portfolioQuery.refetch }
+  const manual = { data: manualQuery.data, error: manualQuery.error, loading: manualQuery.isLoading, reload: manualQuery.refetch }
+  const { refreshing: portfolioRefreshInBackground, refreshNow } = useRefreshAll()
+  const invalidateMoney = useInvalidateMoney()
 
   const active = isManual ? manual : portfolio
   const currency = tab === ACCOUNT_TABS[1] || tab === ACCOUNT_TABS[2] ? 'USD' : 'TWD'
@@ -89,22 +90,10 @@ export default function Holdings() {
   const cashValue = Math.max(inferredCash, 0)
   const allocationTotal = stockValue + cashValue
 
+  // 切換 tab 時收合指標卡片（資料由 TanStack Query 依 queryKey 自動切換）
   useEffect(() => {
     setMetricsExpanded(false)
-    if (initialTabRef.current) {
-      initialTabRef.current = false
-      return
-    }
-    setPortfolioRequest((current) => ({ token: current.token + 1, refresh: false }))
   }, [tab])
-
-  useEffect(() => {
-    if (isManual || !portfolioRefreshInBackground) return undefined
-    const timer = setTimeout(() => {
-      setPortfolioRequest((current) => ({ token: current.token + 1, refresh: false }))
-    }, 5000)
-    return () => clearTimeout(timer)
-  }, [isManual, portfolioRefreshInBackground, portfolio.data?.summary_cached_at])
 
   const metricCards = [
     {
@@ -157,11 +146,11 @@ export default function Holdings() {
           {!isManual ? (
             <button
               type="button"
-              onClick={() => setPortfolioRequest((current) => ({ token: current.token + 1, refresh: true }))}
+              onClick={refreshNow}
               disabled={portfolio.loading || portfolioRefreshInBackground}
               className={`rounded-md border border-sky-500 bg-sky-500/15 px-3 py-2 text-sm font-medium text-sky-100 disabled:opacity-60 sm:px-4 ${portfolio.loading || portfolioRefreshInBackground ? 'submit-pulse' : 'hover:bg-sky-500/20'}`}
             >
-              {portfolioRefreshInBackground ? '背景更新中' : '刷新股價'}
+              {portfolioRefreshInBackground ? '更新中…' : '刷新股價'}
             </button>
           ) : null}
         </div>
@@ -185,7 +174,7 @@ export default function Holdings() {
       {active.error ? <ErrorBlock error={active.error} /> : null}
 
       {!active.loading && !active.error && isManual ? (
-        <ManualValueEditor investments={manual.data?.investments || []} onSaved={manual.reload} />
+        <ManualValueEditor investments={manual.data?.investments || []} onSaved={invalidateMoney} />
       ) : null}
 
       {!active.loading && !active.error && !isManual ? (

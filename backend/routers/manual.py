@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from dependencies import require_auth
 from models import CapitalMovementCreate, CapitalMovementOptionCreate, CashCreate, CashUpdate, ManualInvestmentCreate, ManualInvestmentUpdate, ManualValueUpdate
 from repositories.manual import (
     list_cash_accounts,
@@ -21,7 +22,8 @@ from repositories.manual import (
 from repositories.summary_cache import clear_summary_cache
 from services.accounts import ACCOUNTS, invested_key
 
-router = APIRouter()
+# 整個 router 都需要登入
+router = APIRouter(dependencies=[Depends(require_auth)])
 
 
 @router.get("")

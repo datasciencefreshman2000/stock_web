@@ -113,3 +113,27 @@ class CapitalMovementCreate(BaseModel):
 class CapitalMovementOptionCreate(BaseModel):
     category: str = Field(min_length=1)
     label: str = Field(min_length=1)
+
+
+class LoginRequest(BaseModel):
+    password: str = Field(min_length=1)
+
+
+class CorporateActionCreate(BaseModel):
+    account: str = Field(min_length=1)
+    ticker: str = Field(min_length=1)
+    action_type: str = Field(pattern="^(split|reverse_split|cash_dividend|stock_dividend)$")
+    ex_date: Date
+    ratio: float | None = Field(default=None, gt=0)
+    amount: float | None = None
+    currency: str | None = None
+    note: str = ""
+
+    @model_validator(mode="after")
+    def validate_payload(self) -> "CorporateActionCreate":
+        self.ticker = self.ticker.strip().upper()
+        if self.action_type in {"split", "reverse_split", "stock_dividend"} and not self.ratio:
+            raise ValueError("分割類事件必須提供 ratio（1 股變成幾股）")
+        if self.action_type == "cash_dividend" and self.amount is None:
+            raise ValueError("現金股利必須提供 amount（每股金額）")
+        return self

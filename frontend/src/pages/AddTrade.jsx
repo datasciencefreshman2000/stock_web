@@ -1,26 +1,25 @@
 import { useState } from 'react'
 
 import TradeForm from '../components/TradeForm'
-import { api } from '../api/client'
+import { useTradeMutations } from '../hooks/queries'
 
 export default function AddTrade() {
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
-  const [submitting, setSubmitting] = useState(false)
+  const { add } = useTradeMutations()
+  const submitting = add.isPending
 
   async function submit(payload) {
-    setSubmitting(true)
     setError('')
     setMessage('')
     try {
-      await api.addTrade(payload)
+      // 成功後 useTradeMutations 會讓總覽 / 持倉 / 紀錄的快取失效
+      await add.mutateAsync(payload)
       setMessage('已新增交易。')
       return true
     } catch (err) {
       setError(err.message)
       return false
-    } finally {
-      setSubmitting(false)
     }
   }
 

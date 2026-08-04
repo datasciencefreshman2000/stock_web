@@ -1,10 +1,11 @@
-import asyncio
-from datetime import datetime
-from datetime import timezone
+"""單一帳戶持倉。GET 只讀快取，刷新交給 /api/jobs/refresh（見 A3）。"""
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException
 
 from config import get_settings
+from dependencies import require_auth
 from repositories.manual import list_cash_accounts, list_manual_values
 from repositories.summary_cache import get_summary_cache, portfolio_cache_key, upsert_summary_cache
 from repositories.trades import list_trades
@@ -15,54 +16,32 @@ from services.calculator import (
     build_holdings_from_results,
     summarize_account_from_results,
 )
-from services.constants import TW_ACCOUNTS
-from services.prices import fetch_fugle_company_names_batch, fetch_prices_batch, fetch_usd_rate, get_price_status
+from services.lots import build_buy_lot_details
+from services.prices import (
+    PriceContext,
+    fetch_prices_batch,
+    fetch_usd_rate,
+    get_price_status,
+    resolve_company_names,
+)
+from services.settlement import load_reference_data
+from services.symbols import is_tw_account, symbol_for
 
 router = APIRouter()
-PORTFOLIO_REFRESH_LOCKS: dict[str, asyncio.Lock] = {}
-PORTFOLIO_REFRESH_STATE: dict[str, dict] = {}
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def portfolio_refresh_lock(account: str) -> asyncio.Lock:
-    if account not in PORTFOLIO_REFRESH_LOCKS:
-        PORTFOLIO_REFRESH_LOCKS[account] = asyncio.Lock()
-    return PORTFOLIO_REFRESH_LOCKS[account]
-
-
-def portfolio_refresh_status(account: str) -> dict:
-    return dict(
-        PORTFOLIO_REFRESH_STATE.get(
-            account,
-            {
-                "in_progress": False,
-                "last_started_at": None,
-                "last_finished_at": None,
-                "last_error": None,
-            },
-        )
-    )
-
-
-def with_portfolio_refresh_status(account: str, payload: dict | None, queued: bool = False) -> dict:
-    result = dict(payload or {})
-    result["refresh_queued"] = queued
-    result["portfolio_refresh"] = portfolio_refresh_status(account)
-    return result
 
 
 async def calculate_portfolio(account: str, refresh_prices: bool = False) -> dict:
     if account not in ACCOUNTS:
         raise HTTPException(status_code=404, detail="Unknown account.")
 
+    settings = get_settings()
+    context = PriceContext()
+
     trades = list_trades(account)
     fifo_results = analyze_account_trades(account, trades)
     tickers = active_tickers(fifo_results)
-    settings = get_settings()
-    price_provider_ready = settings.fugle_ready if account in TW_ACCOUNTS else settings.finnhub_ready
+
+    provider_ready = settings.fugle_ready if is_tw_account(account) else settings.finnhub_ready
     prices = (
         await fetch_prices_batch(
             tickers,
@@ -70,76 +49,72 @@ async def calculate_portfolio(account: str, refresh_prices: bool = False) -> dic
             settings.finnhub_key,
             refresh=refresh_prices,
             fugle_key=settings.fugle_api_key,
+            context=context,
         )
-        if price_provider_ready
+        if provider_ready
         else {}
     )
-    company_names = (
-        await fetch_fugle_company_names_batch(tickers, settings.fugle_api_key)
-        if account in TW_ACCOUNTS and settings.fugle_ready
-        else {}
-    )
+    company_names = await resolve_company_names(account, tickers, settings.fugle_api_key)
+
     holdings = build_holdings_from_results(fifo_results, prices, company_names)
     dashboard = summarize_account_from_results(fifo_results, holdings)
+
     usd_rate = await fetch_usd_rate(refresh=False)
     manual_rows = {row["key"]: float(row["value"]) for row in list_manual_values()}
-    cash_rows = list_cash_accounts()
     enrich_account_summary(dashboard, account, usd_rate, manual_rows.get(invested_key(account)))
-    dashboard["cash"] = cash_summary(cash_rows, usd_rate, account)
-    dashboard["updated_at"] = datetime.now().isoformat()
+    dashboard["cash"] = cash_summary(list_cash_accounts(), usd_rate, account)
+    dashboard["updated_at"] = datetime.now(timezone.utc).isoformat()
+
     return {
         "account": account,
         "holdings": holdings,
         "dashboard": dashboard,
-        "price_status": get_price_status(),
+        "price_status": get_price_status(context),
     }
 
 
-async def refresh_portfolio_cache(account: str, refresh_prices: bool = True, skip_if_running: bool = False) -> dict | None:
-    lock = portfolio_refresh_lock(account)
-    if skip_if_running and lock.locked():
-        return get_summary_cache(portfolio_cache_key(account))
-
-    async with lock:
-        PORTFOLIO_REFRESH_STATE[account] = {
-            "in_progress": True,
-            "last_started_at": _now_iso(),
-            "last_finished_at": None,
-            "last_error": None,
-        }
-        try:
-            portfolio = await calculate_portfolio(account, refresh_prices=refresh_prices)
-            cached = upsert_summary_cache(portfolio, portfolio_cache_key(account))
-            PORTFOLIO_REFRESH_STATE[account]["last_finished_at"] = _now_iso()
-            return cached
-        except Exception as exc:
-            PORTFOLIO_REFRESH_STATE[account]["last_error"] = f"{type(exc).__name__}: {exc}"
-            raise
-        finally:
-            PORTFOLIO_REFRESH_STATE[account]["in_progress"] = False
+async def refresh_portfolio_cache(account: str, refresh_prices: bool = True) -> dict:
+    portfolio = await calculate_portfolio(account, refresh_prices=refresh_prices)
+    return upsert_summary_cache(portfolio, portfolio_cache_key(account))
 
 
-@router.get("/{account}")
-async def get_portfolio(
-    account: str,
-    background_tasks: BackgroundTasks,
-    refresh_prices: bool = Query(default=False),
-) -> dict:
+@router.get("/{account}/lots/{ticker}")
+def get_buy_lots(account: str, ticker: str, _: dict = Depends(require_auth)) -> dict:
+    """單一標的的買入明細：每筆買單被賣掉多少、剩多少、賣出均價。
+
+    這份計算以前在前端用 JS 重寫一份，會和後端的 FIFO 不同步，
+    也不知道股票分割的存在。現在統一由後端算。
+    """
     if account not in ACCOUNTS:
         raise HTTPException(status_code=404, detail="Unknown account.")
 
-    cache_key = portfolio_cache_key(account)
-    cached = get_summary_cache(cache_key)
-    if refresh_prices and cached:
-        queued = False
-        lock = portfolio_refresh_lock(account)
-        if not lock.locked():
-            background_tasks.add_task(refresh_portfolio_cache, account, True, True)
-            queued = True
-        return with_portfolio_refresh_status(account, cached, queued=queued)
+    normalized = ticker.strip().upper()
+    trades = list_trades(account, normalized)
+    actions_by_symbol, etf_symbols = load_reference_data(account, [normalized])
+    symbol = symbol_for(account, normalized)
 
-    if cached and not refresh_prices:
-        return with_portfolio_refresh_status(account, cached)
+    rows = build_buy_lot_details(
+        trades,
+        account,
+        normalized,
+        actions=actions_by_symbol.get(symbol, []),
+        is_etf=symbol in etf_symbols if etf_symbols else None,
+    )
+    return {
+        "account": account,
+        "ticker": normalized,
+        "symbol": symbol,
+        "trades": rows,
+        "corporate_actions": actions_by_symbol.get(symbol, []),
+    }
 
-    portfolio = await calculate_portfolio(account, refresh_prices=refresh_prices)
-    return with_portfolio_refresh_status(account, upsert_summary_cache(portfolio, cache_key))
+
+@router.get("/{account}")
+async def get_portfolio(account: str, _: dict = Depends(require_auth)) -> dict:
+    if account not in ACCOUNTS:
+        raise HTTPException(status_code=404, detail="Unknown account.")
+
+    cached = get_summary_cache(portfolio_cache_key(account))
+    if cached:
+        return cached
+    return await refresh_portfolio_cache(account, refresh_prices=False)
