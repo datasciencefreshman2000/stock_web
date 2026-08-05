@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { ArrowLeft, Edit3, Save, Trash2, X } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 
 import MobileNumericInput from '../components/cash/MobileNumericInput'
@@ -7,8 +8,9 @@ import { CREDIT_CARD_DEBT, EXPENSE_TAGS, ON_HAND_CASH, OTHER_TYPES } from '../co
 import { ErrorBlock, LoadingBlock } from '../components/StateBlock'
 import { ACCOUNTS } from '../constants'
 import { maskAmount, usePrivacy } from '../context/PrivacyContext'
-import { useCapitalMovementsQuery, useInvalidateMoney, useManualQuery } from '../hooks/queries'
+import { useCapitalMovementsQuery, useManualQuery } from '../hooks/queries'
 import { api } from '../api/client'
+import { queryKeys } from '../lib/queryClient'
 import { money } from '../utils/format'
 
 function unique(items) {
@@ -83,7 +85,7 @@ export default function CashLedger() {
   const { hideAmounts } = usePrivacy()
   const movementsQuery = useCapitalMovementsQuery()
   const manualQuery = useManualQuery()
-  const invalidateMoney = useInvalidateMoney()
+  const queryClient = useQueryClient()
   const [filter, setFilter] = useState('all')
   const [editingId, setEditingId] = useState('')
   const [form, setForm] = useState(null)
@@ -125,6 +127,30 @@ export default function CashLedger() {
     })
   }
 
+  function markDependentDataStale() {
+    void Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.summary, refetchType: 'none' }),
+      queryClient.invalidateQueries({ queryKey: ['portfolio'], refetchType: 'none' }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.manual, exact: true, refetchType: 'none' }),
+    ])
+  }
+
+  function replaceMovement(movement) {
+    queryClient.setQueryData(queryKeys.capitalMovements, (current) => ({
+      ...(current || {}),
+      movements: (current?.movements || []).map((row) => (row.id === movement.id ? movement : row)),
+    }))
+    markDependentDataStale()
+  }
+
+  function removeMovementFromCache(movementId) {
+    queryClient.setQueryData(queryKeys.capitalMovements, (current) => ({
+      ...(current || {}),
+      movements: (current?.movements || []).filter((row) => row.id !== movementId),
+    }))
+    markDependentDataStale()
+  }
+
   async function save(event) {
     event.preventDefault()
     const amount = Number(form?.amount)
@@ -135,8 +161,8 @@ export default function CashLedger() {
     setSaving(true)
     setMessage('')
     try {
-      await api.updateCapitalMovement(editingId, payloadFromForm(form))
-      await invalidateMoney()
+      const response = await api.updateCapitalMovement(editingId, payloadFromForm(form))
+      replaceMovement(response.movement)
       setEditingId('')
       setForm(null)
       setMessage('記帳紀錄與帳戶餘額已更新。')
@@ -153,7 +179,7 @@ export default function CashLedger() {
     setMessage('')
     try {
       await api.deleteCapitalMovement(row.id)
-      await invalidateMoney()
+      removeMovementFromCache(row.id)
       if (editingId === row.id) {
         setEditingId('')
         setForm(null)

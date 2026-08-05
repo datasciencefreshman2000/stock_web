@@ -63,7 +63,7 @@ export function useInvalidateMoney() {
       client.invalidateQueries({ queryKey: ['summary'] }),
       client.invalidateQueries({ queryKey: ['portfolio'] }),
       client.invalidateQueries({ queryKey: ['trades'] }),
-      client.invalidateQueries({ queryKey: ['manual'] }),
+      client.invalidateQueries({ queryKey: ['manual'], exact: true }),
       client.invalidateQueries({ queryKey: ['manual', 'capital-movements'] }),
     ])
 
