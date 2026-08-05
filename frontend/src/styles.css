@@ -122,6 +122,14 @@ input[type='number']::-webkit-inner-spin-button {
   animation-delay: 135ms;
 }
 
+.keypad-backdrop-enter {
+  animation: keypad-backdrop-enter 160ms ease-out both;
+}
+
+.keypad-sheet-enter {
+  animation: keypad-sheet-enter 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
 @keyframes page-enter {
   from {
     opacity: 0;
@@ -232,6 +240,26 @@ input[type='number']::-webkit-inner-spin-button {
     opacity: 1;
     transform: translateY(0) scale(1);
     filter: blur(0);
+  }
+}
+
+@keyframes keypad-backdrop-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes keypad-sheet-enter {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 

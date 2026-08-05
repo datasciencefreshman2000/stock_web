@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import { Loader2, X } from 'lucide-react'
 
 import { api } from '../../api/client'
 import IncomeSourcePicker from './IncomeSourcePicker'
@@ -29,6 +30,7 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
   })
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
+  const [keypadOpen, setKeypadOpen] = useState(false)
 
   const incomeDestinations = useMemo(() => unique([...bankNames, ON_HAND_CASH, ACCOUNTS[0]]), [bankNames])
   const transferBuckets = useMemo(() => unique([...bankNames, ON_HAND_CASH, ACCOUNTS[0], ACCOUNTS[1]]), [bankNames])
@@ -52,7 +54,28 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
       return next.from_bucket === current.from_bucket && next.to_bucket === current.to_bucket ? current : next
     })
     if (mode !== 'transfer') setExchange(false)
+    if (mode !== 'expense') setKeypadOpen(false)
   }, [mode, expenseSources, incomeDestinations, transferBuckets, transferDestinations])
+
+  useEffect(() => {
+    if (!keypadOpen) return undefined
+    const previousOverflow = document.body.style.overflow
+    const desktopQuery = window.matchMedia('(min-width: 640px)')
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setKeypadOpen(false)
+    }
+    const closeOnDesktop = (event) => {
+      if (event.matches) setKeypadOpen(false)
+    }
+    document.body.style.overflow = 'hidden'
+    window.addEventListener('keydown', closeOnEscape)
+    desktopQuery.addEventListener('change', closeOnDesktop)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', closeOnEscape)
+      desktopQuery.removeEventListener('change', closeOnDesktop)
+    }
+  }, [keypadOpen])
 
   function update(key, value) {
     setForm((current) => ({ ...current, [key]: value }))
@@ -90,11 +113,15 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
     setSaving(true)
     setMessage('')
     try {
+      const amount = Number(form.amount)
+      if (!Number.isFinite(amount) || amount <= 0) {
+        throw new Error('請輸入大於 0 的金額')
+      }
       let payload = {
         movement_date: form.movement_date,
         from_bucket: null,
         to_bucket: form.to_bucket,
-        amount: Number(form.amount || 0),
+        amount,
         currency: form.currency,
         to_amount: exchange && mode === 'transfer' ? Number(form.to_amount || 0) : null,
         to_currency: exchange && mode === 'transfer' ? form.to_currency : null,
@@ -119,6 +146,7 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
       await api.createCapitalMovement(payload)
       await onSaved?.()
       setMessage('已儲存並更新現金資料')
+      setKeypadOpen(false)
       setForm((current) => ({ ...current, amount: '', to_amount: '', note: '' }))
     } catch (err) {
       setMessage(err.message || '儲存失敗，請稍後再試')
@@ -185,20 +213,43 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
           </label>
         ) : null}
 
-        <label className="grid gap-1 text-xs text-slate-400">
-          金額
-          <input
-            className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm text-white"
-            type={mode === 'expense' ? 'text' : 'number'}
-            inputMode={mode === 'expense' ? 'none' : 'decimal'}
-            pattern={mode === 'expense' ? '[0-9.]*' : undefined}
-            min="0"
-            step="0.01"
-            value={form.amount}
-            onChange={(event) => (mode === 'expense' ? updateAmount(event.target.value) : update('amount', event.target.value))}
-            required
-          />
-        </label>
+        {mode === 'expense' ? (
+          <div className="grid gap-1 text-xs text-slate-400">
+            金額
+            <button
+              type="button"
+              onClick={() => setKeypadOpen(true)}
+              className={`flex min-h-11 items-center justify-end rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm sm:hidden ${form.amount ? 'text-white' : 'text-slate-500'}`}
+              aria-haspopup="dialog"
+              aria-expanded={keypadOpen}
+            >
+              {form.amount || '點選輸入金額'}
+            </button>
+            <input
+              aria-label="支出金額"
+              className="hidden rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm text-white sm:block"
+              type="text"
+              inputMode="decimal"
+              pattern="[0-9.]*"
+              value={form.amount}
+              onChange={(event) => updateAmount(event.target.value)}
+            />
+          </div>
+        ) : (
+          <label className="grid gap-1 text-xs text-slate-400">
+            金額
+            <input
+              className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm text-white"
+              type="number"
+              inputMode="decimal"
+              min="0"
+              step="0.01"
+              value={form.amount}
+              onChange={(event) => update('amount', event.target.value)}
+              required
+            />
+          </label>
+        )}
         {mode !== 'expense' ? (
           <label className="grid max-w-20 gap-1 text-[11px] text-slate-500">
             幣別
@@ -231,7 +282,7 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
         ) : null}
 
         {mode === 'expense' ? (
-          <div className="sm:col-span-2 lg:col-span-6">
+          <div className="hidden sm:col-span-2 sm:block lg:col-span-6">
             <NumericKeypad
               value={form.amount}
               onChange={updateAmount}
@@ -240,6 +291,54 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
             />
           </div>
         ) : null}
+
+        {keypadOpen && mode === 'expense'
+          ? createPortal(
+              <div className="fixed inset-0 z-[70] sm:hidden" role="dialog" aria-modal="true" aria-label="輸入支出金額">
+                <button
+                  type="button"
+                  className="keypad-backdrop-enter absolute inset-0 min-h-0 w-full bg-black/70"
+                  onClick={() => setKeypadOpen(false)}
+                  aria-label="關閉數字鍵盤"
+                />
+                <div
+                  className="keypad-sheet-enter absolute inset-x-0 bottom-0 rounded-t-lg border border-line bg-surface p-3 shadow-xl"
+                  style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
+                >
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-white">輸入支出金額</div>
+                      <div className="truncate text-xs text-slate-500">從 {form.from_bucket} 支出</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setKeypadOpen(false)}
+                      className="grid h-10 min-h-0 w-10 shrink-0 place-items-center rounded-md border border-line text-slate-300 active:scale-95"
+                      aria-label="關閉數字鍵盤"
+                      title="關閉數字鍵盤"
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+                  <NumericKeypad
+                    value={form.amount}
+                    onChange={updateAmount}
+                    currency={form.currency}
+                    onCurrencyChange={(value) => update('currency', value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setKeypadOpen(false)}
+                    disabled={Number(form.amount) <= 0}
+                    className="mt-3 w-full rounded-md bg-sky-500 px-4 py-3 text-sm font-medium text-white active:scale-[0.99] disabled:opacity-40"
+                  >
+                    完成
+                  </button>
+                </div>
+              </div>,
+              document.body,
+            )
+          : null}
         <button
           className={`flex items-center justify-center gap-2 rounded-md bg-sky-500 px-4 py-2 text-sm font-medium text-white transition active:scale-[0.99] disabled:opacity-70 lg:col-span-1 ${saving ? 'submit-pulse' : 'hover:bg-sky-400'}`}
           disabled={saving}
