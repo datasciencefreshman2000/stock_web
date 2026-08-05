@@ -1,4 +1,5 @@
 import { money } from '../../utils/format'
+import AllocationBar from './AllocationBar'
 
 export default function CashRatioSection({ ownAccounts, hideAmounts }) {
   const rows = Object.entries(ownAccounts).map(([name, row]) => {
@@ -27,15 +28,8 @@ export default function CashRatioSection({ ownAccounts, hideAmounts }) {
                 股票 <span className="text-white">{(row.stockRatio * 100).toFixed(1)}%</span>
               </span>
             </div>
-            <div className="mb-3 flex h-2.5 overflow-hidden rounded-full bg-line">
-              <div
-                className="rounded-l-full bg-sky-400 transition-all"
-                style={{ width: `${row.stockRatio * 100}%` }}
-              />
-              <div
-                className="rounded-r-full bg-amber-400 transition-all"
-                style={{ width: `${row.cashRatio * 100}%` }}
-              />
+            <div className="mb-3">
+              <AllocationBar stockRatio={row.stockRatio} cashRatio={row.cashRatio} />
             </div>
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div className="flex items-center gap-2">

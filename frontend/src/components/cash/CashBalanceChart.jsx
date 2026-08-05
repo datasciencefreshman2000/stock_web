@@ -32,6 +32,20 @@ function AccountTick({ x, y, payload }) {
   )
 }
 
+function CashTooltip({ active, payload, hidden }) {
+  if (!active || !payload?.length) return null
+  const row = payload[0]?.payload
+  if (!row) return null
+  return (
+    <div className="rounded-md border border-line bg-[#111827] px-3 py-2 shadow-xl">
+      <div className="text-xs font-medium text-white">{row.name}</div>
+      <div className="mt-1 text-sm font-semibold tabular-nums text-white">
+        {hidden ? maskAmount(money(row.value)) : money(row.value)}
+      </div>
+    </div>
+  )
+}
+
 export default function CashBalanceChart({ data }) {
   const { hideAmounts } = usePrivacy()
   const rows = data.filter((item) => item.isTotal || Math.abs(Number(item.value || 0)) > 0.000001)
@@ -73,12 +87,7 @@ export default function CashBalanceChart({ data }) {
                 tickLine={false}
               />
               <ReferenceLine x={0} stroke="#94a3b8" strokeWidth={1.5} />
-              <Tooltip
-                cursor={{ fill: 'rgba(148, 163, 184, 0.06)' }}
-                formatter={(value) => (hideAmounts ? maskAmount(money(value)) : money(value))}
-                contentStyle={{ background: '#111827', border: '1px solid #253044', borderRadius: 6 }}
-                labelStyle={{ color: '#cbd5e1' }}
-              />
+              <Tooltip cursor={{ fill: 'rgba(148, 163, 184, 0.06)' }} content={<CashTooltip hidden={hideAmounts} />} />
               <Bar dataKey="value" radius={4} maxBarSize={22}>
                 {rows.map((item) => (
                   <Cell

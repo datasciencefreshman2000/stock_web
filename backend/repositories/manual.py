@@ -183,7 +183,14 @@ def delete_manual_investment(investment_id: str) -> None:
 
 def list_capital_movements() -> list[dict]:
     try:
-        response = get_supabase().table("capital_movements").select("*").order("movement_date", desc=True).execute()
+        response = (
+            get_supabase()
+            .table("capital_movements")
+            .select("*")
+            .order("movement_date", desc=True)
+            .order("created_at", desc=True)
+            .execute()
+        )
         return response.data or []
     except Exception:
         return []
@@ -192,6 +199,34 @@ def list_capital_movements() -> list[dict]:
 def create_capital_movement(payload: dict) -> dict:
     response = get_supabase().table("capital_movements").insert(payload).execute()
     return response.data[0] if response.data else payload
+
+
+def get_capital_movement(movement_id: str) -> dict | None:
+    response = (
+        get_supabase()
+        .table("capital_movements")
+        .select("*")
+        .eq("id", movement_id)
+        .limit(1)
+        .execute()
+    )
+    rows = response.data or []
+    return rows[0] if rows else None
+
+
+def update_capital_movement(movement_id: str, payload: dict) -> dict:
+    response = (
+        get_supabase()
+        .table("capital_movements")
+        .update(payload)
+        .eq("id", movement_id)
+        .execute()
+    )
+    return response.data[0] if response.data else {"id": movement_id, **payload}
+
+
+def delete_capital_movement(movement_id: str) -> None:
+    get_supabase().table("capital_movements").delete().eq("id", movement_id).execute()
 
 
 def list_capital_movement_options(category: str) -> list[dict]:

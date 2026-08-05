@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from './context/AuthContext'
 import { PrivacyProvider } from './context/PrivacyContext'
 import AddTrade from './pages/AddTrade'
 import Cash from './pages/Cash'
+import CashLedger from './pages/CashLedger'
 import Dashboard from './pages/Dashboard'
 import History from './pages/History'
 import Holdings from './pages/Holdings'
@@ -20,6 +21,7 @@ function AnimatedRoutes() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/holdings" element={<Holdings />} />
         <Route path="/cash" element={<Cash />} />
+        <Route path="/cash/ledger" element={<CashLedger />} />
         <Route path="/add-trade" element={<AddTrade />} />
         <Route path="/history" element={<History />} />
       </Routes>

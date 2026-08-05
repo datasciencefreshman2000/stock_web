@@ -1,6 +1,7 @@
 import { Save, X } from 'lucide-react'
 
 import { ACCOUNTS } from '../../constants'
+import MobileNumericInput from '../cash/MobileNumericInput'
 import { isTwTradeForm } from '../../utils/trades'
 import { number } from '../../utils/format'
 
@@ -69,48 +70,45 @@ export default function TradeEditForm({ form, onChange, onSubmit, onCancel, savi
             ))}
           </div>
         </div>
-        <label className="grid gap-1 text-xs text-slate-400">
+        <div className="grid gap-1 text-xs text-slate-400">
           股數
-          <input
-            className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm text-white"
-            type="number"
-            min="0"
-            step="0.0001"
+          <MobileNumericInput
             value={form.qty}
-            onChange={(event) => onChange('qty', event.target.value)}
+            onChange={(value) => onChange('qty', value)}
+            label="股數"
+            currency="股"
+            maxDecimals={4}
+            allowZero={false}
             disabled={saving}
-            required
           />
-        </label>
-        <label className="grid gap-1 text-xs text-slate-400">
+        </div>
+        <div className="grid gap-1 text-xs text-slate-400">
           價格
-          <input
-            className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm text-white"
-            type={hideAmounts ? 'password' : 'number'}
-            min="0"
-            step="0.0001"
+          <MobileNumericInput
             value={form.price}
-            onChange={(event) => onChange('price', event.target.value)}
+            onChange={(value) => onChange('price', value)}
+            label="價格"
+            currency={isTw ? 'TWD' : 'USD'}
+            maxDecimals={4}
+            allowZero={false}
+            masked={hideAmounts}
             disabled={saving}
-            required
           />
-        </label>
+        </div>
       </div>
 
       <div className="grid gap-2 sm:grid-cols-[0.8fr_minmax(0,1fr)_auto] sm:items-end">
-        <label className="grid gap-1 text-xs text-slate-400">
+        <div className="grid gap-1 text-xs text-slate-400">
           手續費
-          <input
-            className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm text-white disabled:text-slate-500"
-            type={hideAmounts ? 'password' : 'number'}
-            min="0"
-            step="0.01"
+          <MobileNumericInput
             value={isTw ? '' : form.fee}
-            placeholder={isTw ? '自動' : '0'}
-            onChange={(event) => onChange('fee', event.target.value)}
+            onChange={(value) => onChange('fee', value)}
+            label="手續費"
+            currency={isTw ? 'TWD' : 'USD'}
+            masked={hideAmounts}
             disabled={saving || isTw}
           />
-        </label>
+        </div>
         <label className="grid gap-1 text-xs text-slate-400">
           備註
           <input

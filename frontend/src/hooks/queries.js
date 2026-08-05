@@ -58,14 +58,20 @@ export function useCapitalMovementOptionsQuery(category = 'income_source') {
  */
 export function useInvalidateMoney() {
   const client = useQueryClient()
-  return () => {
-    return Promise.all([
+  return async () => {
+    await Promise.all([
       client.invalidateQueries({ queryKey: ['summary'] }),
       client.invalidateQueries({ queryKey: ['portfolio'] }),
       client.invalidateQueries({ queryKey: ['trades'] }),
       client.invalidateQueries({ queryKey: ['manual'] }),
       client.invalidateQueries({ queryKey: ['manual', 'capital-movements'] }),
     ])
+
+    // Route changes can otherwise reuse an inactive pre-save result during staleTime.
+    const inactiveKeys = [['summary'], ['portfolio'], ['trades'], ['manual']]
+    inactiveKeys.forEach((queryKey) => {
+      client.removeQueries({ queryKey, type: 'inactive' })
+    })
   }
 }
 

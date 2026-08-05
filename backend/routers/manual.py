@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from dependencies import require_auth
-from models import CapitalMovementCreate, CapitalMovementOptionCreate, CashCreate, CashUpdate, ManualInvestmentCreate, ManualInvestmentUpdate, ManualValueUpdate
+from models import CapitalMovementCreate, CapitalMovementOptionCreate, CapitalMovementUpdate, CashCreate, CashUpdate, ManualInvestmentCreate, ManualInvestmentUpdate, ManualValueUpdate
 from repositories.manual import (
     list_cash_accounts,
     create_cash,
@@ -9,12 +9,15 @@ from repositories.manual import (
     create_capital_movement_option,
     adjust_cash_balance,
     create_manual_investment,
+    delete_capital_movement,
     delete_capital_movement_option,
     delete_manual_investment,
+    get_capital_movement,
     list_capital_movements,
     list_capital_movement_options,
     list_manual_values,
     list_manual_investments,
+    update_capital_movement,
     update_manual_investment,
     update_cash,
     upsert_manual_value,
@@ -107,21 +110,84 @@ def remove_capital_movement_option(option_id: str) -> dict:
 def add_capital_movement(payload: CapitalMovementCreate) -> dict:
     data = {key: value for key, value in payload.model_dump(mode="json").items() if value is not None}
     movement = create_capital_movement(data)
-    values = {row["key"]: float(row["value"]) for row in list_manual_values()}
-    cash_names = {row["name"] for row in list_cash_accounts()} | CASH_ACCOUNT_NAMES
-    amount = float(data["amount"])
-    to_amount = float(data.get("to_amount") or data["amount"])
-    currency = data["currency"]
-    to_currency = data.get("to_currency") or currency
-    if data.get("to_bucket") in ACCOUNTS:
-        key = invested_key(data["to_bucket"])
-        upsert_manual_value(key, values.get(key, 0) + to_amount)
-    elif data.get("to_bucket") in cash_names:
-        adjust_cash_balance(data["to_bucket"], to_currency, to_amount)
-    if data.get("from_bucket") in ACCOUNTS:
-        key = invested_key(data["from_bucket"])
-        upsert_manual_value(key, max(values.get(key, 0) - amount, 0))
-    elif data.get("from_bucket") in cash_names:
-        adjust_cash_balance(data["from_bucket"], currency, -amount)
+    try:
+        apply_capital_movement_effect(data)
+    except Exception:
+        if movement.get("id"):
+            delete_capital_movement(movement["id"])
+        raise
     clear_summary_cache()
     return {"success": True, "movement": movement}
+
+
+def apply_capital_movement_effect(data: dict, direction: float = 1) -> None:
+    values = {row["key"]: float(row["value"]) for row in list_manual_values()}
+    cash_names = {row["name"] for row in list_cash_accounts()} | CASH_ACCOUNT_NAMES
+
+    def adjust_bucket(bucket: str | None, currency: str, delta: float) -> None:
+        if not bucket:
+            return
+        if bucket in ACCOUNTS:
+            key = invested_key(bucket)
+            value = max(values.get(key, 0) + delta, 0)
+            upsert_manual_value(key, value)
+            values[key] = value
+        elif bucket in cash_names:
+            adjust_cash_balance(bucket, currency, delta)
+
+    amount = float(data["amount"])
+    currency = data.get("currency") or "TWD"
+    to_amount = float(data.get("to_amount") or amount)
+    to_currency = data.get("to_currency") or currency
+    operations = [
+        (data.get("to_bucket"), to_currency, direction * to_amount),
+        (data.get("from_bucket"), currency, direction * -amount),
+    ]
+    completed: list[tuple[str | None, str, float]] = []
+    try:
+        for bucket, bucket_currency, delta in operations:
+            adjust_bucket(bucket, bucket_currency, delta)
+            completed.append((bucket, bucket_currency, delta))
+    except Exception:
+        for bucket, bucket_currency, delta in reversed(completed):
+            adjust_bucket(bucket, bucket_currency, -delta)
+        raise
+
+
+def capital_movement_payload(row: dict) -> dict:
+    keys = ("movement_date", "from_bucket", "to_bucket", "amount", "currency", "to_amount", "to_currency", "note")
+    return {key: row.get(key) for key in keys}
+
+
+@router.patch("/capital-movements/{movement_id}")
+def patch_capital_movement(movement_id: str, payload: CapitalMovementUpdate) -> dict:
+    previous = get_capital_movement(movement_id)
+    if not previous:
+        raise HTTPException(status_code=404, detail="Capital movement not found.")
+
+    data = {key: value for key, value in payload.model_dump(mode="json").items() if value is not None}
+    apply_capital_movement_effect(previous, direction=-1)
+    try:
+        movement = update_capital_movement(movement_id, data)
+        apply_capital_movement_effect(data)
+    except Exception:
+        update_capital_movement(movement_id, capital_movement_payload(previous))
+        apply_capital_movement_effect(previous)
+        raise
+    clear_summary_cache()
+    return {"success": True, "movement": movement}
+
+
+@router.delete("/capital-movements/{movement_id}")
+def remove_capital_movement(movement_id: str) -> dict:
+    previous = get_capital_movement(movement_id)
+    if not previous:
+        raise HTTPException(status_code=404, detail="Capital movement not found.")
+    apply_capital_movement_effect(previous, direction=-1)
+    try:
+        delete_capital_movement(movement_id)
+    except Exception:
+        apply_capital_movement_effect(previous)
+        raise
+    clear_summary_cache()
+    return {"success": True}

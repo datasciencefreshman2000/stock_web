@@ -2,6 +2,7 @@ import { RotateCcw, Save, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { api } from '../api/client'
+import MobileNumericInput from './cash/MobileNumericInput'
 import { usePrivacy } from '../context/PrivacyContext'
 import { money, percent, pnlClass } from '../utils/format'
 
@@ -211,36 +212,39 @@ export default function ManualValueEditor({ investments = [], onSaved }) {
                 <option value="TWD">TWD</option>
                 <option value="USD">USD</option>
               </select>
-              <label className="grid gap-1 text-xs text-slate-400 lg:block">
+              <div className="grid gap-1 text-xs text-slate-400 lg:block">
                 <span>投入金額</span>
-                <input
-                  className="w-full rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm text-white outline-none focus:border-sky-500"
-                  type={hideAmounts ? 'password' : 'number'}
+                <MobileNumericInput
                   value={inputValue(row, 'cost')}
-                  onChange={(event) => updateNumber(row, 'cost', event.target.value)}
+                  onChange={(value) => updateNumber(row, 'cost', value)}
+                  label={`${row.name}投入金額`}
+                  currency={currency}
+                  masked={hideAmounts}
                   disabled={rowSaving}
                 />
-              </label>
-              <label className="grid gap-1 text-xs text-slate-400 lg:block">
+              </div>
+              <div className="grid gap-1 text-xs text-slate-400 lg:block">
                 <span>現金量</span>
-                <input
-                  className="w-full rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm text-white outline-none focus:border-sky-500"
-                  type={hideAmounts ? 'password' : 'number'}
+                <MobileNumericInput
                   value={inputValue(row, 'cash_amount')}
-                  onChange={(event) => updateNumber(row, 'cash_amount', event.target.value)}
+                  onChange={(value) => updateNumber(row, 'cash_amount', value)}
+                  label={`${row.name}現金量`}
+                  currency={currency}
+                  masked={hideAmounts}
                   disabled={rowSaving}
                 />
-              </label>
-              <label className="grid gap-1 text-xs text-slate-400 lg:block">
+              </div>
+              <div className="grid gap-1 text-xs text-slate-400 lg:block">
                 <span>市值</span>
-                <input
-                  className="w-full rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm text-white outline-none focus:border-sky-500"
-                  type={hideAmounts ? 'password' : 'number'}
+                <MobileNumericInput
                   value={inputValue(row, 'value')}
-                  onChange={(event) => updateNumber(row, 'value', event.target.value)}
+                  onChange={(value) => updateNumber(row, 'value', value)}
+                  label={`${row.name}市值`}
+                  currency={currency}
+                  masked={hideAmounts}
                   disabled={rowSaving}
                 />
-              </label>
+              </div>
               <div className={`rounded-md bg-panel/60 px-3 py-2 text-right text-sm lg:bg-transparent lg:px-0 ${pnlClass(pnl)}`}>
                 <div className="text-xs text-slate-400">現金 {percent(cashRatio)}</div>
                 <div>{hideAmounts ? percent(roi) : `${money(pnl, currency)} / ${percent(roi)}`}</div>

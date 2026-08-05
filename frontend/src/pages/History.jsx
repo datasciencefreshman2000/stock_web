@@ -13,11 +13,12 @@ import {
   compareTradesNewestFirst,
   rangeFilters,
   tradeAccountRatio,
+  tradeAmount,
   tradeFormFromTrade,
   tradePayloadFromForm,
   tradeQty,
 } from '../utils/trades'
-import { number, percent } from '../utils/format'
+import { money, number, percent } from '../utils/format'
 
 export default function History() {
   const { hideAmounts } = usePrivacy()
@@ -154,6 +155,8 @@ export default function History() {
             {trades.map((trade) => {
               const isBuy = Number(trade.buy_qty || 0) > 0
               const qty = tradeQty(trade)
+              const amount = tradeAmount(trade)
+              const currency = trade.account === ACCOUNTS[0] ? 'TWD' : 'USD'
               const ratio = tradeAccountRatio(trade, accountSummaries, account)
               const isEditing = editingId === trade.id
               return (
@@ -201,7 +204,7 @@ export default function History() {
                     />
                   ) : (
                     <>
-                      <div className="grid grid-cols-3 gap-2 text-xs">
+                      <div className="grid grid-cols-[0.8fr_0.9fr_1.4fr_0.9fr] gap-2 text-xs">
                         <div>
                           <div className="text-slate-400">數量</div>
                           <div className="text-slate-100">{hideAmounts ? MASKED_VALUE : number(qty, 4)}</div>
@@ -209,6 +212,10 @@ export default function History() {
                         <div>
                           <div className="text-slate-400">價格</div>
                           <div className="text-slate-100">{hideAmounts ? MASKED_VALUE : number(trade.price, 2)}</div>
+                        </div>
+                        <div>
+                          <div className="text-slate-400">總金額</div>
+                          <div className="truncate text-slate-100">{hideAmounts ? MASKED_VALUE : money(amount, currency)}</div>
                         </div>
                         <div>
                           <div className="text-slate-400">佔帳戶</div>
@@ -223,7 +230,7 @@ export default function History() {
             })}
           </div>
           <div className="hidden max-h-[calc(100vh-220px)] overflow-auto sm:block">
-            <table className="w-full min-w-[940px] text-left text-sm">
+            <table className="w-full min-w-[1040px] text-left text-sm">
               <thead className="border-b border-line bg-panel text-slate-300">
                 <tr>
                   <th className="sticky top-0 z-20 bg-panel px-4 py-3">日期</th>
@@ -232,6 +239,7 @@ export default function History() {
                   <th className="sticky top-0 z-20 bg-panel px-4 py-3">買賣</th>
                   <th className="sticky top-0 z-20 bg-panel px-4 py-3 text-right">股數</th>
                   <th className="sticky top-0 z-20 bg-panel px-4 py-3 text-right">價格</th>
+                  <th className="sticky top-0 z-20 bg-panel px-4 py-3 text-right">總金額</th>
                   <th className="sticky top-0 z-20 bg-panel px-4 py-3 text-right">佔帳戶</th>
                   <th className="sticky top-0 z-20 bg-panel px-4 py-3">備註</th>
                   <th className="sticky top-0 z-20 bg-panel px-4 py-3"></th>
@@ -241,12 +249,14 @@ export default function History() {
                 {trades.map((trade) => {
                   const isBuy = Number(trade.buy_qty || 0) > 0
                   const qty = tradeQty(trade)
+                  const amount = tradeAmount(trade)
+                  const currency = trade.account === ACCOUNTS[0] ? 'TWD' : 'USD'
                   const ratio = tradeAccountRatio(trade, accountSummaries, account)
                   const isEditing = editingId === trade.id
                   if (isEditing && editForm) {
                     return (
                       <tr key={trade.id} className="border-b border-line/70 last:border-0">
-                        <td colSpan={9} className="px-4 py-3">
+                        <td colSpan={10} className="px-4 py-3">
                           <TradeEditForm
                             form={editForm}
                             onChange={updateEdit}
@@ -272,6 +282,7 @@ export default function History() {
                       </td>
                       <td className="px-4 py-3 text-right">{hideAmounts ? MASKED_VALUE : number(qty, 4)}</td>
                       <td className="px-4 py-3 text-right">{hideAmounts ? MASKED_VALUE : number(trade.price, 2)}</td>
+                      <td className="px-4 py-3 text-right">{hideAmounts ? MASKED_VALUE : money(amount, currency)}</td>
                       <td className="px-4 py-3 text-right">{percent(ratio)}</td>
                       <td className="px-4 py-3 text-slate-400">{trade.note}</td>
                       <td className="px-4 py-3 text-right">

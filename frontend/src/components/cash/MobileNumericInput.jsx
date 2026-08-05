@@ -20,6 +20,7 @@ export default function MobileNumericInput({
   secondaryLabel,
   statusMessage = '',
   busy = false,
+  disabled = false,
   allowZero = true,
   desktopClassName = '',
 }) {
@@ -63,7 +64,8 @@ export default function MobileNumericInput({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className={`flex min-h-11 w-full items-center justify-end rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm sm:hidden ${shownValue !== '' ? 'text-white' : 'text-slate-500'}`}
+        disabled={disabled}
+        className={`flex min-h-11 w-full items-center justify-end rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm disabled:opacity-50 sm:hidden ${shownValue !== '' ? 'text-white' : 'text-slate-500'}`}
         aria-haspopup="dialog"
         aria-expanded={open}
       >
@@ -77,6 +79,7 @@ export default function MobileNumericInput({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         onBlur={onDesktopBlur}
+        disabled={disabled}
       />
       {open
         ? createPortal(
@@ -124,7 +127,7 @@ export default function MobileNumericInput({
                   <button
                     type="button"
                     onClick={complete}
-                    disabled={busy || !Number.isFinite(Number(value)) || (!allowZero && Number(value) <= 0)}
+                    disabled={disabled || busy || !Number.isFinite(Number(value)) || (!allowZero && Number(value) <= 0)}
                     className="rounded-md bg-sky-500 px-3 py-3 text-sm font-medium text-white active:scale-[0.98] disabled:opacity-40"
                   >
                     {busy ? '儲存中' : primaryLabel}

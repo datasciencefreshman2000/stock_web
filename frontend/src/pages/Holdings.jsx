@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 
+import AllocationBar from '../components/dashboard/AllocationBar'
 import HoldingsTable from '../components/HoldingsTable'
 import ManualValueEditor from '../components/ManualValueEditor'
 import PriceStatus from '../components/PriceStatus'
@@ -41,10 +42,7 @@ function StockCashBar({ stocks, cash, total, currency, hideAmounts }) {
           現金 <span className="text-slate-200">{percent(cashRatio)}</span>
         </span>
       </div>
-      <div className="flex h-2.5 overflow-hidden rounded-full bg-line">
-        <div className="bg-sky-400 transition-all" style={{ width: `${stockRatio * 100}%` }} />
-        <div className="bg-amber-400 transition-all" style={{ width: `${cashRatio * 100}%` }} />
-      </div>
+      <AllocationBar stockRatio={stockRatio} cashRatio={cashRatio} />
       <div className="mt-2 grid grid-cols-2 gap-3 text-xs">
         <div className="flex min-w-0 items-center gap-2">
           <span className="h-2 w-2 shrink-0 rounded-sm bg-sky-400" />

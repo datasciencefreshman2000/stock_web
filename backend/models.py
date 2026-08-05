@@ -110,6 +110,10 @@ class CapitalMovementCreate(BaseModel):
     note: str = ""
 
 
+class CapitalMovementUpdate(CapitalMovementCreate):
+    pass
+
+
 class CapitalMovementOptionCreate(BaseModel):
     category: str = Field(min_length=1)
     label: str = Field(min_length=1)

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { api } from '../api/client'
+import MobileNumericInput from './cash/MobileNumericInput'
 import { usePrivacy } from '../context/PrivacyContext'
 
 export default function AccountCapitalPanel({ account, manualValues = [], onSaved }) {
@@ -27,12 +28,15 @@ export default function AccountCapitalPanel({ account, manualValues = [], onSave
   return (
     <label className="grid gap-2 rounded-md border border-line bg-surface p-3 text-sm text-slate-300">
       <span>已投入金額</span>
-      <input
-        className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-white outline-none focus:border-sky-500"
-        type={hideAmounts ? 'password' : 'number'}
+      <MobileNumericInput
         value={invested}
-        onChange={(event) => setInvested(event.target.value)}
-        onBlur={save}
+        onChange={setInvested}
+        label={`${account}已投入金額`}
+        currency={account === '台股' ? 'TWD' : 'USD'}
+        masked={hideAmounts}
+        onComplete={save}
+        onDesktopBlur={save}
+        busy={saving}
       />
       {saving ? <span className="text-xs text-slate-500">儲存中</span> : null}
     </label>

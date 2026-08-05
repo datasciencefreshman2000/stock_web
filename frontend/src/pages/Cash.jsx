@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { ChevronDown, ChevronUp, ReceiptText } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 import { api } from '../api/client'
 import AccountInvestedPanel from '../components/cash/AccountInvestedPanel'
@@ -175,7 +176,6 @@ export default function Cash() {
 
   async function refreshMoneyNow() {
     await invalidateMoney()
-    await Promise.all([manualQuery.refetch(), summaryQuery.refetch()])
   }
 
   const totals = grouped.reduce(
@@ -276,6 +276,13 @@ export default function Cash() {
           <h1 className="text-2xl font-semibold">現金</h1>
           <p className="mt-1 text-sm text-slate-400">USD/TWD {Number(usdRate || 0).toFixed(2)}</p>
         </div>
+        <Link
+          to="/cash/ledger"
+          className="inline-flex items-center gap-1.5 rounded-md border border-sky-500/60 bg-sky-500/10 px-3 py-2 text-xs font-medium text-sky-100 transition hover:bg-sky-500/20 active:scale-[0.98]"
+        >
+          <ReceiptText size={15} />
+          記帳紀錄
+        </Link>
       </header>
 
       <section className={`grid gap-3 ${summaryOpen ? 'sm:grid-cols-3' : ''}`}>

@@ -2,6 +2,7 @@ import { Loader2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { api } from '../api/client'
+import MobileNumericInput from './cash/MobileNumericInput'
 import { ACCOUNTS } from '../constants'
 import { maskAmount, usePrivacy } from '../context/PrivacyContext'
 import { money } from '../utils/format'
@@ -166,14 +167,14 @@ export default function TradeForm({ onSubmit, submitting }) {
 
   return (
     <form onSubmit={submit} className="grid gap-4 rounded-md border border-line bg-surface p-3 sm:p-4">
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-[2fr_2fr_1fr] sm:gap-3">
+      <div className="grid grid-cols-10 gap-2 sm:grid-cols-[2fr_2fr_1fr] sm:gap-3">
         {ACCOUNTS.map((account, index) => (
           <button
             key={account}
             type="button"
             onClick={() => update('account', account)}
-            className={`rounded-md border px-3 py-2 text-sm transition hover:-translate-y-0.5 hover:border-sky-400/70 hover:bg-sky-500/10 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400/70 active:scale-[0.98] ${
-              index === 2 ? 'font-medium sm:text-xs' : 'font-medium'
+            className={`rounded-md border py-2 text-sm transition hover:-translate-y-0.5 hover:border-sky-400/70 hover:bg-sky-500/10 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400/70 active:scale-[0.98] sm:col-span-1 sm:px-3 ${
+              index === 2 ? 'col-span-2 px-1 text-xs font-medium sm:text-xs' : 'col-span-4 px-2 font-medium'
             } ${
               form.account === account ? 'border-sky-400 bg-sky-500/15 text-white shadow-sm shadow-sky-950/40' : 'border-line bg-panel text-slate-300'
             }`}
@@ -239,22 +240,29 @@ export default function TradeForm({ onSubmit, submitting }) {
             ))}
           </div>
         </div>
-        <label className="grid gap-2 text-sm">
+        <div className="grid gap-2 text-sm">
           股數
-          <input className="rounded-md border border-line bg-[#0b1020] px-3 py-2" type="number" min="0" step="0.0001" value={form.qty} onChange={(event) => update('qty', event.target.value)} required />
-        </label>
-        <label className="grid gap-2 text-sm">
-          價格
-          <input
-            className="rounded-md border border-line bg-[#0b1020] px-3 py-2"
-            type={hideAmounts ? 'password' : 'number'}
-            min="0"
-            step="0.0001"
-            value={form.price}
-            onChange={(event) => update('price', event.target.value)}
-            required
+          <MobileNumericInput
+            value={form.qty}
+            onChange={(value) => update('qty', value)}
+            label="股數"
+            currency="股"
+            maxDecimals={4}
+            allowZero={false}
           />
-        </label>
+        </div>
+        <div className="grid gap-2 text-sm">
+          價格
+          <MobileNumericInput
+            value={form.price}
+            onChange={(value) => update('price', value)}
+            label="價格"
+            currency={isTw ? 'TWD' : 'USD'}
+            maxDecimals={4}
+            allowZero={false}
+            masked={hideAmounts}
+          />
+        </div>
       </div>
 
       {isUs ? (
@@ -269,13 +277,12 @@ export default function TradeForm({ onSubmit, submitting }) {
               國泰 {hideAmounts ? maskAmount(money(cathayUsFee, 'USD')) : money(cathayUsFee, 'USD')}
             </button>
           </div>
-          <input
-            className="rounded-md border border-line bg-[#0b1020] px-3 py-2"
-            type={hideAmounts ? 'password' : 'number'}
-            min="0"
-            step="0.01"
+          <MobileNumericInput
             value={form.fee}
-            onChange={(event) => update('fee', event.target.value)}
+            onChange={(value) => update('fee', value)}
+            label="美股手續費"
+            currency="USD"
+            masked={hideAmounts}
           />
         </div>
       ) : null}
