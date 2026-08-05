@@ -34,7 +34,7 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
   const transferBuckets = useMemo(() => unique([...bankNames, ON_HAND_CASH, ACCOUNTS[0], ACCOUNTS[1]]), [bankNames])
   const transferDestinations = useMemo(() => unique([...transferBuckets, CREDIT_CARD_DEBT]), [transferBuckets])
   const expenseSources = useMemo(
-    () => unique([...positiveBankNames, ON_HAND_CASH, CREDIT_CARD_DEBT]),
+    () => unique([ON_HAND_CASH, ...positiveBankNames, CREDIT_CARD_DEBT]),
     [positiveBankNames],
   )
 
@@ -141,6 +141,7 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
             key={key}
             type="button"
             onClick={() => setMode(key)}
+            aria-pressed={mode === key}
             className={`rounded-md border px-2 py-2 text-sm transition hover:-translate-y-0.5 hover:border-sky-400/70 hover:bg-sky-500/10 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400/70 active:scale-[0.98] ${mode === key ? 'border-sky-400 bg-sky-500/15 text-white shadow-sm shadow-sky-950/40' : 'border-line bg-panel text-slate-300'}`}
           >
             {label}
@@ -198,13 +199,15 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
             required
           />
         </label>
-        <label className="grid max-w-20 gap-1 text-[11px] text-slate-500">
-          幣別
-          <select className="rounded-md border border-line bg-[#0b1020] px-2 py-1.5 text-xs text-white" value={form.currency} onChange={(event) => update('currency', event.target.value)}>
-            <option value="TWD">TWD</option>
-            <option value="USD">USD</option>
-          </select>
-        </label>
+        {mode !== 'expense' ? (
+          <label className="grid max-w-20 gap-1 text-[11px] text-slate-500">
+            幣別
+            <select className="rounded-md border border-line bg-[#0b1020] px-2 py-1.5 text-xs text-white" value={form.currency} onChange={(event) => update('currency', event.target.value)}>
+              <option value="TWD">TWD</option>
+              <option value="USD">USD</option>
+            </select>
+          </label>
+        ) : null}
         {mode === 'transfer' ? (
           <label className="flex items-center gap-2 rounded-md border border-line bg-panel px-3 py-2 text-xs text-slate-300">
             <input className="min-h-0" type="checkbox" checked={exchange} onChange={(event) => setExchange(event.target.checked)} />
@@ -228,12 +231,13 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
         ) : null}
 
         {mode === 'expense' ? (
-          <div className="grid gap-2 sm:col-span-2 lg:col-span-6">
-            <div className="flex items-center justify-between text-xs text-slate-400">
-              <span>點選輸入金額</span>
-              <span className="text-slate-500">最多兩位小數</span>
-            </div>
-            <NumericKeypad value={form.amount} onChange={updateAmount} />
+          <div className="sm:col-span-2 lg:col-span-6">
+            <NumericKeypad
+              value={form.amount}
+              onChange={updateAmount}
+              currency={form.currency}
+              onCurrencyChange={(value) => update('currency', value)}
+            />
           </div>
         ) : null}
         <button
@@ -253,6 +257,7 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
                   key={tag}
                   type="button"
                   onClick={() => toggleExpenseTag(tag)}
+                  aria-pressed={form.expense_tags.includes(tag)}
                   className={`rounded-full border px-3 py-1 text-xs transition hover:border-sky-400/70 hover:bg-sky-500/10 hover:text-white ${
                     form.expense_tags.includes(tag) ? 'border-sky-400 bg-sky-500/15 text-sky-100' : 'border-line bg-panel text-slate-300'
                   }`}

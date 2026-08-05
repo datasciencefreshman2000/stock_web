@@ -11,7 +11,7 @@ function appendDecimal(value) {
   return value ? `${value}.` : '0.'
 }
 
-export default function NumericKeypad({ value, onChange }) {
+export default function NumericKeypad({ value, onChange, currency, onCurrencyChange }) {
   function press(key) {
     if (key === 'clear') {
       onChange('')
@@ -30,6 +30,20 @@ export default function NumericKeypad({ value, onChange }) {
 
   return (
     <div className="rounded-md border border-line bg-panel/60 p-2" aria-label="數字鍵盤">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="text-xs text-slate-400">
+          點選輸入金額 <span className="text-slate-500">· 最多兩位小數</span>
+        </div>
+        <select
+          aria-label="支出幣別"
+          className="h-8 min-h-0 w-20 shrink-0 rounded-md border border-line bg-[#0b1020] px-2 py-0 text-xs font-medium text-white"
+          value={currency}
+          onChange={(event) => onCurrencyChange(event.target.value)}
+        >
+          <option value="TWD">TWD</option>
+          <option value="USD">USD</option>
+        </select>
+      </div>
       <div className="grid grid-cols-4 gap-2">
         {['7', '8', '9', 'backspace', '4', '5', '6', 'clear', '1', '2', '3', '.', '0'].map((key) => {
           const isAction = key === 'backspace' || key === 'clear'

@@ -37,7 +37,10 @@ select {
   max-width: 100%;
 }
 
-button {
+button,
+a,
+[role='button'],
+select {
   touch-action: manipulation;
 }
 

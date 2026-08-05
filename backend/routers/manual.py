@@ -20,7 +20,7 @@ from repositories.manual import (
     upsert_manual_value,
 )
 from repositories.summary_cache import clear_summary_cache
-from services.accounts import ACCOUNTS, invested_key
+from services.accounts import ACCOUNTS, CASH_ACCOUNT_NAMES, invested_key
 
 # 整個 router 都需要登入
 router = APIRouter(dependencies=[Depends(require_auth)])
@@ -108,7 +108,7 @@ def add_capital_movement(payload: CapitalMovementCreate) -> dict:
     data = {key: value for key, value in payload.model_dump(mode="json").items() if value is not None}
     movement = create_capital_movement(data)
     values = {row["key"]: float(row["value"]) for row in list_manual_values()}
-    cash_names = {row["name"] for row in list_cash_accounts()}
+    cash_names = {row["name"] for row in list_cash_accounts()} | CASH_ACCOUNT_NAMES
     amount = float(data["amount"])
     to_amount = float(data.get("to_amount") or data["amount"])
     currency = data["currency"]

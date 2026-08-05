@@ -7,6 +7,18 @@ ACCOUNT_CURRENCY = {
 ACCOUNTS = ["台股", "美股", "爸媽美股"]
 OWN_ACCOUNTS = {"台股", "美股"}
 EXTERNAL_ACCOUNTS = {"爸媽美股"}
+CASH_ACCOUNT_NAMES = {
+    "新光現金",
+    "第一現金",
+    "郵局現金",
+    "國泰現金",
+    "外面欠錢 (待收款)",
+    "社團欠錢 (待收款)",
+    "緊急現金",
+    "公司欠錢 (待收款)",
+    "信用卡欠錢",
+    "身上現金",
+}
 
 
 def account_currency(account: str) -> str:
