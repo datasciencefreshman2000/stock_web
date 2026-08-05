@@ -3,6 +3,7 @@ import { Loader2 } from 'lucide-react'
 
 import { api } from '../../api/client'
 import IncomeSourcePicker from './IncomeSourcePicker'
+import NumericKeypad from './NumericKeypad'
 import { ACCOUNTS } from '../../constants'
 import { CREDIT_CARD_DEBT, EXPENSE_TAGS, INCOME_SOURCES, ON_HAND_CASH, OTHER_TYPES, today } from './constants'
 
@@ -16,7 +17,7 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
   const [form, setForm] = useState({
     movement_date: today,
     income_source: INCOME_SOURCES[0],
-    expense_tag: EXPENSE_TAGS[0],
+    expense_tags: [EXPENSE_TAGS[0]],
     other_type: OTHER_TYPES[0],
     from_bucket: bankNames[0] || ON_HAND_CASH,
     to_bucket: bankNames[0] || ACCOUNTS[0],
@@ -61,6 +62,29 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
     return [tag, note.trim()].filter(Boolean).join(' - ')
   }
 
+  function noteWithTags(tags, note) {
+    return noteWithTag(tags.join(', '), note)
+  }
+
+  function updateAmount(value) {
+    const cleaned = value.replace(/[^0-9.]/g, '')
+    const [integer = '', ...decimalParts] = cleaned.split('.')
+    const decimal = decimalParts.join('').slice(0, 2)
+    update('amount', decimalParts.length ? `${integer || '0'}.${decimal}` : integer)
+  }
+
+  function toggleExpenseTag(tag) {
+    setForm((current) => {
+      const selected = current.expense_tags.includes(tag)
+      return {
+        ...current,
+        expense_tags: selected
+          ? current.expense_tags.filter((item) => item !== tag)
+          : [...current.expense_tags, tag],
+      }
+    })
+  }
+
   async function submit(event) {
     event.preventDefault()
     setSaving(true)
@@ -86,7 +110,7 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
           ...payload,
           from_bucket: form.from_bucket,
           to_bucket: '支出',
-          note: noteWithTag(form.expense_tag, form.note),
+          note: noteWithTags(form.expense_tags, form.note),
         }
       } else {
         payload = { ...payload, to_bucket: form.other_type, note: noteWithTag(form.other_type, form.note) }
@@ -162,7 +186,17 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
 
         <label className="grid gap-1 text-xs text-slate-400">
           金額
-          <input className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm text-white" type="number" min="0" step="0.01" value={form.amount} onChange={(event) => update('amount', event.target.value)} required />
+          <input
+            className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm text-white"
+            type={mode === 'expense' ? 'text' : 'number'}
+            inputMode={mode === 'expense' ? 'none' : 'decimal'}
+            pattern={mode === 'expense' ? '[0-9.]*' : undefined}
+            min="0"
+            step="0.01"
+            value={form.amount}
+            onChange={(event) => (mode === 'expense' ? updateAmount(event.target.value) : update('amount', event.target.value))}
+            required
+          />
         </label>
         <label className="grid max-w-20 gap-1 text-[11px] text-slate-500">
           幣別
@@ -192,6 +226,16 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
             </label>
           </>
         ) : null}
+
+        {mode === 'expense' ? (
+          <div className="grid gap-2 sm:col-span-2 lg:col-span-6">
+            <div className="flex items-center justify-between text-xs text-slate-400">
+              <span>點選輸入金額</span>
+              <span className="text-slate-500">最多兩位小數</span>
+            </div>
+            <NumericKeypad value={form.amount} onChange={updateAmount} />
+          </div>
+        ) : null}
         <button
           className={`flex items-center justify-center gap-2 rounded-md bg-sky-500 px-4 py-2 text-sm font-medium text-white transition active:scale-[0.99] disabled:opacity-70 lg:col-span-1 ${saving ? 'submit-pulse' : 'hover:bg-sky-400'}`}
           disabled={saving}
@@ -208,9 +252,9 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
                 <button
                   key={tag}
                   type="button"
-                  onClick={() => update('expense_tag', tag)}
+                  onClick={() => toggleExpenseTag(tag)}
                   className={`rounded-full border px-3 py-1 text-xs transition hover:border-sky-400/70 hover:bg-sky-500/10 hover:text-white ${
-                    form.expense_tag === tag ? 'border-sky-400 bg-sky-500/15 text-sky-100' : 'border-line bg-panel text-slate-300'
+                    form.expense_tags.includes(tag) ? 'border-sky-400 bg-sky-500/15 text-sky-100' : 'border-line bg-panel text-slate-300'
                   }`}
                 >
                   {tag}
