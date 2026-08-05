@@ -23,6 +23,7 @@ export default function Cash() {
   const [drafts, setDrafts] = useState({})
   const [statuses, setStatuses] = useState({})
   const [selectedRows, setSelectedRows] = useState(new Set())
+  const [zeroRowsOpen, setZeroRowsOpen] = useState(false)
   const timersRef = useRef({})
   const processingRef = useRef(false)
   const queueRef = useRef(new Map())
@@ -162,6 +163,11 @@ export default function Cash() {
     return twd + usd * usdRate
   }
 
+  async function refreshMoneyNow() {
+    await invalidateMoney()
+    await Promise.all([manualQuery.refetch(), summaryQuery.refetch()])
+  }
+
   const totals = grouped.reduce(
     (acc, item) => {
       const twd = Number(cellValue(item, 'TWD') || 0)
@@ -179,6 +185,59 @@ export default function Cash() {
     .filter((item) => Number(cellValue(item, 'TWD') || 0) > 0 || Number(cellValue(item, 'USD') || 0) > 0)
     .map((item) => item.name)
   const sortedGrouped = [...grouped].sort((a, b) => Math.abs(accountTotal(b)) - Math.abs(accountTotal(a)))
+  const activeGrouped = sortedGrouped.filter((item) => Math.abs(accountTotal(item)) > 0.000001)
+  const zeroGrouped = sortedGrouped.filter((item) => Math.abs(accountTotal(item)) <= 0.000001)
+
+  function renderCashRow(item) {
+    const twd = cellValue(item, 'TWD')
+    const usd = cellValue(item, 'USD')
+    const total = Number(twd || 0) + Number(usd || 0) * usdRate
+    const twdStatus = statuses[cellKey(item, 'TWD')]
+    const usdStatus = statuses[cellKey(item, 'USD')]
+    const rowStatus = [twdStatus, usdStatus].find((status) => ['saving', 'pending', 'editing', 'error'].includes(status))
+    const selected = selectedRows.has(item.name)
+    return (
+      <div key={item.name} className={`grid gap-2 px-3 py-3 transition sm:grid-cols-[minmax(10rem,1fr)_7rem_7rem] sm:items-center sm:px-4 ${selected ? 'bg-sky-500/10' : ''}`}>
+        <button
+          type="button"
+          onClick={() => toggleSelected(item.name)}
+          className={`grid min-h-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md border px-2 py-2 text-left transition ${
+            selected ? 'border-sky-400 bg-sky-500/15' : 'border-transparent hover:border-line hover:bg-panel/60'
+          }`}
+        >
+          <span className="truncate font-medium text-white">{item.name}</span>
+          <span className="shrink-0 text-right text-xs tabular-nums text-slate-300">
+            {hideAmounts ? maskAmount(money(total)) : money(total)}
+          </span>
+        </button>
+        <div className="grid grid-cols-2 gap-2 sm:contents">
+          <label className="grid gap-1 text-[11px] text-slate-500 sm:block">
+            <span className="sm:hidden">台幣</span>
+            <input
+              className="w-full rounded-md border border-line bg-[#0b1020] px-2 py-1.5 text-right text-sm text-white outline-none focus:border-sky-500"
+              type={hideAmounts ? 'password' : 'number'}
+              value={twd}
+              onChange={(event) => updateCell(item, 'TWD', event.target.value)}
+            />
+          </label>
+          <label className="grid gap-1 text-[11px] text-slate-500 sm:block">
+            <span className="sm:hidden">美金</span>
+            <input
+              className="w-full rounded-md border border-line bg-[#0b1020] px-2 py-1.5 text-right text-sm text-white outline-none focus:border-sky-500"
+              type={hideAmounts ? 'password' : 'number'}
+              value={usd}
+              onChange={(event) => updateCell(item, 'USD', event.target.value)}
+            />
+          </label>
+        </div>
+        {rowStatus ? (
+          <div className={`text-right text-xs sm:col-span-3 ${rowStatus === 'error' ? 'text-rose-300' : 'text-slate-500'}`}>
+            {rowStatus === 'editing' ? '編輯中' : rowStatus === 'pending' ? '等待儲存' : rowStatus === 'saving' ? '儲存中' : '儲存失敗'}
+          </div>
+        ) : null}
+      </div>
+    )
+  }
 
   if ((manual.loading && !manual.data) || (summary.loading && !summary.data)) {
     return (
@@ -212,8 +271,8 @@ export default function Cash() {
         <SummaryCard label="美金" value={money(totals.usd, 'USD')} />
       </section>
 
-      <AccountInvestedPanel values={manual.data?.values || []} onSaved={invalidateMoney} />
-      <CapitalMovementPanel bankNames={bankNames} positiveBankNames={positiveBankNames} onSaved={invalidateMoney} />
+      <AccountInvestedPanel values={manual.data?.values || []} onSaved={refreshMoneyNow} />
+      <CapitalMovementPanel bankNames={bankNames} positiveBankNames={positiveBankNames} onSaved={refreshMoneyNow} />
 
       <section>
         <div className="scrollbar-hide flex snap-x snap-mandatory gap-3 overflow-x-auto pb-3 lg:hidden">
@@ -281,56 +340,20 @@ export default function Cash() {
           <div className="text-right">美金</div>
         </div>
         <div className="divide-y divide-line">
-          {sortedGrouped.map((item) => {
-            const twd = cellValue(item, 'TWD')
-            const usd = cellValue(item, 'USD')
-            const total = Number(twd || 0) + Number(usd || 0) * usdRate
-            const twdStatus = statuses[cellKey(item, 'TWD')]
-            const usdStatus = statuses[cellKey(item, 'USD')]
-            const rowStatus = [twdStatus, usdStatus].find((status) => ['saving', 'pending', 'editing', 'error'].includes(status))
-            const selected = selectedRows.has(item.name)
-            return (
-              <div key={item.name} className={`grid gap-2 px-3 py-3 transition sm:grid-cols-[minmax(10rem,1fr)_7rem_7rem] sm:items-center sm:px-4 ${selected ? 'bg-sky-500/10' : ''}`}>
-                <button
-                  type="button"
-                  onClick={() => toggleSelected(item.name)}
-                  className={`grid min-h-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md border px-2 py-2 text-left transition ${
-                    selected ? 'border-sky-400 bg-sky-500/15' : 'border-transparent hover:border-line hover:bg-panel/60'
-                  }`}
-                >
-                  <span className="truncate font-medium text-white">{item.name}</span>
-                  <span className="shrink-0 text-right text-xs tabular-nums text-slate-300">
-                    {hideAmounts ? maskAmount(money(total)) : money(total)}
-                  </span>
-                </button>
-                <div className="grid grid-cols-2 gap-2 sm:contents">
-                  <label className="grid gap-1 text-[11px] text-slate-500 sm:block">
-                    <span className="sm:hidden">台幣</span>
-                    <input
-                      className="w-full rounded-md border border-line bg-[#0b1020] px-2 py-1.5 text-right text-sm text-white outline-none focus:border-sky-500"
-                      type={hideAmounts ? 'password' : 'number'}
-                      value={twd}
-                      onChange={(event) => updateCell(item, 'TWD', event.target.value)}
-                    />
-                  </label>
-                  <label className="grid gap-1 text-[11px] text-slate-500 sm:block">
-                    <span className="sm:hidden">美金</span>
-                    <input
-                      className="w-full rounded-md border border-line bg-[#0b1020] px-2 py-1.5 text-right text-sm text-white outline-none focus:border-sky-500"
-                      type={hideAmounts ? 'password' : 'number'}
-                      value={usd}
-                      onChange={(event) => updateCell(item, 'USD', event.target.value)}
-                    />
-                  </label>
-                </div>
-                {rowStatus ? (
-                  <div className={`text-right text-xs sm:col-span-3 ${rowStatus === 'error' ? 'text-rose-300' : 'text-slate-500'}`}>
-                    {rowStatus === 'editing' ? '編輯中' : rowStatus === 'pending' ? '等待儲存' : rowStatus === 'saving' ? '儲存中' : '儲存失敗'}
-                  </div>
-                ) : null}
-              </div>
-            )
-          })}
+          {activeGrouped.map(renderCashRow)}
+          {zeroGrouped.length ? (
+            <div>
+              <button
+                type="button"
+                onClick={() => setZeroRowsOpen((open) => !open)}
+                className="flex w-full items-center justify-between px-4 py-3 text-left text-sm text-slate-300 transition hover:bg-panel/70 hover:text-white"
+              >
+                <span>0 元帳戶</span>
+                <span className="text-xs text-slate-500">{zeroRowsOpen ? '收合' : `展開 ${zeroGrouped.length} 個`}</span>
+              </button>
+              {zeroRowsOpen ? <div className="divide-y divide-line border-t border-line">{zeroGrouped.map(renderCashRow)}</div> : null}
+            </div>
+          ) : null}
         </div>
       </section>
     </div>

@@ -91,9 +91,8 @@ def adjust_cash_balance(name: str, currency: str, delta: float) -> dict:
         amount = float(row.get("amount") or 0) + delta
         return update_cash(row["id"], amount, currency)
 
-    if delta <= 0:
-        return {"name": name, "currency": currency, "amount": 0}
-    return create_cash({"name": name, "account": "", "category": "現金", "currency": currency, "amount": delta})
+    category = "負債" if delta < 0 or "欠錢" in name else "現金"
+    return create_cash({"name": name, "account": "", "category": category, "currency": currency, "amount": delta})
 
 
 def list_manual_investments() -> list[dict]:

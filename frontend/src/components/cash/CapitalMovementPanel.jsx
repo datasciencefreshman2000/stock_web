@@ -1,10 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 
 import { api } from '../../api/client'
 import IncomeSourcePicker from './IncomeSourcePicker'
 import { ACCOUNTS } from '../../constants'
-import { INCOME_SOURCES, ON_HAND_CASH, OTHER_TYPES, today } from './constants'
+import { CREDIT_CARD_DEBT, EXPENSE_TAGS, INCOME_SOURCES, ON_HAND_CASH, OTHER_TYPES, today } from './constants'
+
+function unique(items) {
+  return [...new Set(items.filter(Boolean))]
+}
 
 export default function CapitalMovementPanel({ bankNames, positiveBankNames, onSaved }) {
   const [mode, setMode] = useState('income')
@@ -12,8 +16,9 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
   const [form, setForm] = useState({
     movement_date: today,
     income_source: INCOME_SOURCES[0],
+    expense_tag: EXPENSE_TAGS[0],
     other_type: OTHER_TYPES[0],
-    from_bucket: bankNames[0] || '',
+    from_bucket: bankNames[0] || ON_HAND_CASH,
     to_bucket: bankNames[0] || ACCOUNTS[0],
     amount: '',
     currency: 'TWD',
@@ -23,10 +28,14 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
   })
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
-  const incomeDestinations = [...bankNames, ACCOUNTS[0]]
-  const transferBuckets = [...bankNames, ACCOUNTS[0], ACCOUNTS[1]]
-  const transferDestinations = [...transferBuckets, ON_HAND_CASH]
-  const expenseSources = positiveBankNames
+
+  const incomeDestinations = useMemo(() => unique([...bankNames, ON_HAND_CASH, ACCOUNTS[0]]), [bankNames])
+  const transferBuckets = useMemo(() => unique([...bankNames, ON_HAND_CASH, ACCOUNTS[0], ACCOUNTS[1]]), [bankNames])
+  const transferDestinations = useMemo(() => unique([...transferBuckets, CREDIT_CARD_DEBT]), [transferBuckets])
+  const expenseSources = useMemo(
+    () => unique([...positiveBankNames, ON_HAND_CASH, CREDIT_CARD_DEBT]),
+    [positiveBankNames],
+  )
 
   useEffect(() => {
     const fromOptions = mode === 'expense' ? expenseSources : transferBuckets
@@ -42,10 +51,14 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
       return next.from_bucket === current.from_bucket && next.to_bucket === current.to_bucket ? current : next
     })
     if (mode !== 'transfer') setExchange(false)
-  }, [mode, bankNames, positiveBankNames])
+  }, [mode, expenseSources, incomeDestinations, transferBuckets, transferDestinations])
 
   function update(key, value) {
     setForm((current) => ({ ...current, [key]: value }))
+  }
+
+  function noteWithTag(tag, note) {
+    return [tag, note.trim()].filter(Boolean).join(' - ')
   }
 
   async function submit(event) {
@@ -61,25 +74,30 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
         currency: form.currency,
         to_amount: exchange && mode === 'transfer' ? Number(form.to_amount || 0) : null,
         to_currency: exchange && mode === 'transfer' ? form.to_currency : null,
-        note: form.note,
+        note: form.note.trim(),
       }
 
       if (mode === 'income') {
-        payload = { ...payload, from_bucket: null, to_bucket: form.to_bucket, note: [form.income_source, form.note].filter(Boolean).join(' - ') }
+        payload = { ...payload, to_bucket: form.to_bucket, note: noteWithTag(form.income_source, form.note) }
       } else if (mode === 'transfer') {
         payload = { ...payload, from_bucket: form.from_bucket, to_bucket: form.to_bucket }
       } else if (mode === 'expense') {
-        payload = { ...payload, from_bucket: form.from_bucket, to_bucket: '支出' }
+        payload = {
+          ...payload,
+          from_bucket: form.from_bucket,
+          to_bucket: '支出',
+          note: noteWithTag(form.expense_tag, form.note),
+        }
       } else {
-        payload = { ...payload, from_bucket: null, to_bucket: form.other_type, note: [form.other_type, form.note].filter(Boolean).join(' - ') }
+        payload = { ...payload, to_bucket: form.other_type, note: noteWithTag(form.other_type, form.note) }
       }
 
       await api.createCapitalMovement(payload)
-      setMessage('已記錄資金異動。')
-      setForm((current) => ({ ...current, amount: '', note: '' }))
-      onSaved?.()
+      await onSaved?.()
+      setMessage('已儲存並更新現金資料')
+      setForm((current) => ({ ...current, amount: '', to_amount: '', note: '' }))
     } catch (err) {
-      setMessage(err.message || '資金異動儲存失敗')
+      setMessage(err.message || '儲存失敗，請稍後再試')
     } finally {
       setSaving(false)
     }
@@ -87,7 +105,7 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
 
   return (
     <section className="rounded-md border border-line bg-surface">
-      <div className="border-b border-line bg-panel px-4 py-3 text-sm font-medium">資金異動</div>
+      <div className="border-b border-line bg-panel px-4 py-3 text-sm font-medium">資金紀錄</div>
       <div className="grid grid-cols-4 gap-2 p-3">
         {[
           ['income', '收入'],
@@ -162,11 +180,11 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
         {mode === 'transfer' && exchange ? (
           <>
             <label className="grid gap-1 text-xs text-slate-400">
-              換成金額
+              換入金額
               <input className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm text-white" type="number" min="0" step="0.01" value={form.to_amount} onChange={(event) => update('to_amount', event.target.value)} required />
             </label>
             <label className="grid max-w-20 gap-1 text-[11px] text-slate-500">
-              換成
+              換入幣別
               <select className="rounded-md border border-line bg-[#0b1020] px-2 py-1.5 text-xs text-white" value={form.to_currency} onChange={(event) => update('to_currency', event.target.value)}>
                 <option value="USD">USD</option>
                 <option value="TWD">TWD</option>
@@ -179,11 +197,32 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
           disabled={saving}
         >
           {saving ? <Loader2 size={15} className="animate-spin" /> : null}
-          {saving ? '儲存中' : '新增異動'}
+          {saving ? '儲存中' : '儲存紀錄'}
         </button>
-        <label className="grid gap-1 text-xs text-slate-400 sm:col-span-2 lg:col-span-5">
+
+        {mode === 'expense' ? (
+          <div className="grid gap-2 text-xs text-slate-400 sm:col-span-2 lg:col-span-6">
+            支出 tag
+            <div className="flex flex-wrap gap-2">
+              {EXPENSE_TAGS.map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => update('expense_tag', tag)}
+                  className={`rounded-full border px-3 py-1 text-xs transition hover:border-sky-400/70 hover:bg-sky-500/10 hover:text-white ${
+                    form.expense_tag === tag ? 'border-sky-400 bg-sky-500/15 text-sky-100' : 'border-line bg-panel text-slate-300'
+                  }`}
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        <label className="grid gap-1 text-xs text-slate-400 sm:col-span-2 lg:col-span-6">
           備註
-          <input className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm text-white" value={form.note} onChange={(event) => update('note', event.target.value)} />
+          <input className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm text-white" value={form.note} onChange={(event) => update('note', event.target.value)} placeholder={mode === 'expense' ? '會自動加上支出 tag' : ''} />
         </label>
         {message ? <div className="text-xs text-slate-400 lg:col-span-6">{message}</div> : null}
       </form>

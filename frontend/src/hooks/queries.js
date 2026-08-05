@@ -59,10 +59,13 @@ export function useCapitalMovementOptionsQuery(category = 'income_source') {
 export function useInvalidateMoney() {
   const client = useQueryClient()
   return () => {
-    client.invalidateQueries({ queryKey: ['summary'] })
-    client.invalidateQueries({ queryKey: ['portfolio'] })
-    client.invalidateQueries({ queryKey: ['trades'] })
-    client.invalidateQueries({ queryKey: ['manual'] })
+    return Promise.all([
+      client.invalidateQueries({ queryKey: ['summary'] }),
+      client.invalidateQueries({ queryKey: ['portfolio'] }),
+      client.invalidateQueries({ queryKey: ['trades'] }),
+      client.invalidateQueries({ queryKey: ['manual'] }),
+      client.invalidateQueries({ queryKey: ['manual', 'capital-movements'] }),
+    ])
   }
 }
 

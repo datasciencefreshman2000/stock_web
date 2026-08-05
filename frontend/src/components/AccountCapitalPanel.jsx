@@ -16,9 +16,12 @@ export default function AccountCapitalPanel({ account, manualValues = [], onSave
 
   async function save() {
     setSaving(true)
-    await api.updateManualValue(key, Number(invested || 0))
-    setSaving(false)
-    onSaved?.()
+    try {
+      await api.updateManualValue(key, Number(invested || 0))
+      await onSaved?.()
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (

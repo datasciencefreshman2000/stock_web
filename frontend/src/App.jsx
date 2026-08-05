@@ -1,6 +1,7 @@
 import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom'
 
 import NavBar from './components/NavBar'
+import PrivacyToggle from './components/PrivacyToggle'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { PrivacyProvider } from './context/PrivacyContext'
 import AddTrade from './pages/AddTrade'
@@ -68,6 +69,7 @@ function AuthedApp() {
           <main className="mx-auto w-full max-w-6xl px-3 pb-28 pt-4 sm:px-4 sm:pb-24 sm:pt-5">
             <AnimatedRoutes />
           </main>
+          <PrivacyToggle />
           <NavBar />
         </div>
       </BrowserRouter>

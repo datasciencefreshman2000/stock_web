@@ -18,7 +18,7 @@ export default function AccountInvestedPanel({ values = [], onSaved }) {
   async function save(account) {
     const key = `invested_${account}`
     await api.updateManualValue(key, Number(drafts[key] || 0))
-    onSaved?.()
+    await onSaved?.()
   }
 
   return (

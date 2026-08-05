@@ -14,7 +14,7 @@ from repositories.trades import (
     update_trade,
 )
 from services.constants import TW_ACCOUNTS
-from services.fees import calc_tw_fee
+from services.fees import calc_tw_fee, calc_tw_tax
 from services.prices import resolve_company_names
 from services.settlement import invalidate_for_trade
 from services.symbols import symbol_for
@@ -24,12 +24,14 @@ router = APIRouter()
 
 def prepare_trade_payload(payload: dict) -> dict:
     qty = payload.get("buy_qty") or payload.get("sell_qty") or 0
-    if payload["account"] in TW_ACCOUNTS and not payload.get("fee"):
+    is_tw = payload["account"] in TW_ACCOUNTS
+    if is_tw and not payload.get("fee"):
         payload["fee"] = calc_tw_fee(payload["price"], qty)
+    tax = calc_tw_tax(payload["price"], qty, payload["ticker"]) if is_tw and payload.get("sell_qty") else 0
     payload["total"] = (
         payload["price"] * qty + payload["fee"]
         if payload.get("buy_qty")
-        else payload["price"] * qty - payload["fee"]
+        else payload["price"] * qty - payload["fee"] - tax
     )
     return payload
 

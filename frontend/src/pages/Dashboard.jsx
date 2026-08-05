@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Eye, EyeOff, RefreshCw } from 'lucide-react'
+import { RefreshCw } from 'lucide-react'
 
 import AssetPieChart from '../components/AssetPieChart'
 import CashRatioSection from '../components/dashboard/CashRatioSection'
@@ -20,7 +20,7 @@ import { money, percent, pnlClass } from '../utils/format'
 export default function Dashboard() {
   const [selectedInvestmentGroup, setSelectedInvestmentGroup] = useState(null)
   const [summaryExpanded, setSummaryExpanded] = useState(false)
-  const { hideAmounts, toggleHideAmounts } = usePrivacy()
+  const { hideAmounts } = usePrivacy()
   const { data, error, isLoading: loading } = useSummaryQuery()
 
   // 刷新是同步的：等後端抓完價、重算完，快取失效後畫面自動重讀
@@ -151,14 +151,6 @@ export default function Dashboard() {
           <p className="flex-1 text-xs text-slate-400">
             {today} · USD/TWD {Number(data.usd_rate || 0).toFixed(2)}
           </p>
-          <button
-            type="button"
-            onClick={toggleHideAmounts}
-            className="rounded-md border border-line bg-surface p-2 text-slate-300 hover:border-sky-500 hover:text-white"
-            title={hideAmounts ? '顯示金額' : '隱藏金額'}
-          >
-            {hideAmounts ? <EyeOff size={18} /> : <Eye size={18} />}
-          </button>
           <button
             type="button"
             onClick={refreshNow}

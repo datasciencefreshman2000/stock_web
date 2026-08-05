@@ -80,7 +80,7 @@ export default function ManualValueEditor({ investments = [], onSaved }) {
     try {
       await api.updateInvestment(row.id, payloadFor(row))
       clearDraft(row)
-      onSaved?.()
+      await onSaved?.()
     } catch (err) {
       setError(err.message || '儲存失敗')
     } finally {
@@ -96,7 +96,7 @@ export default function ManualValueEditor({ investments = [], onSaved }) {
     try {
       await Promise.all(rows.map((row) => api.updateInvestment(row.id, payloadFor(row))))
       setDrafts({})
-      onSaved?.()
+      await onSaved?.()
     } catch (err) {
       setError(err.message || '儲存失敗')
     } finally {
@@ -115,7 +115,7 @@ export default function ManualValueEditor({ investments = [], onSaved }) {
         value: 0,
         currency: 'TWD',
       })
-      onSaved?.()
+      await onSaved?.()
     } catch (err) {
       setError(err.message || '新增失敗')
     }
@@ -126,7 +126,7 @@ export default function ManualValueEditor({ investments = [], onSaved }) {
     setError('')
     try {
       await api.deleteInvestment(row.id)
-      onSaved?.()
+      await onSaved?.()
     } catch (err) {
       setError(err.message || '刪除失敗')
     }

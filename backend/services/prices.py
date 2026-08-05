@@ -14,7 +14,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 import httpx
-from fugle_marketdata import RestClient
 
 from repositories.fx_rates import get_fx_rate, upsert_fx_rate
 from repositories.price_cache import list_price_cache, upsert_price_cache_rows
@@ -24,6 +23,12 @@ from services.symbols import is_tw_account, symbol_for
 PRICE_REFRESH_TTL_SECONDS = 10 * 60
 RATE_REFRESH_TTL_SECONDS = 60 * 60
 DEFAULT_USD_TWD = 31.316
+
+
+def _fugle_client(api_key: str):
+    from fugle_marketdata import RestClient
+
+    return RestClient(api_key=api_key)
 
 
 def _now_iso() -> str:
@@ -96,7 +101,7 @@ async def fetch_finnhub_price(client: httpx.AsyncClient, ticker: str, api_key: s
 
 def _fugle_price_sync(ticker: str, api_key: str) -> float | None:
     try:
-        client = RestClient(api_key=api_key)
+        client = _fugle_client(api_key)
         quote = client.stock.intraday.quote(symbol=ticker)
         price = quote.get("lastPrice") or quote.get("closePrice") or quote.get("previousClose")
         return float(price) if price else None
@@ -106,7 +111,7 @@ def _fugle_price_sync(ticker: str, api_key: str) -> float | None:
 
 def _fugle_ticker_info_sync(ticker: str, api_key: str) -> dict | None:
     try:
-        client = RestClient(api_key=api_key)
+        client = _fugle_client(api_key)
         return client.stock.intraday.ticker(symbol=ticker)
     except Exception:
         return None
