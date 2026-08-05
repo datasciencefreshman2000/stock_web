@@ -4,6 +4,7 @@ import { ChevronDown, ChevronUp } from 'lucide-react'
 import { api } from '../../api/client'
 import { ACCOUNTS } from '../../constants'
 import { usePrivacy } from '../../context/PrivacyContext'
+import MobileNumericInput from './MobileNumericInput'
 
 export default function AccountInvestedPanel({ values = [], onSaved }) {
   const { hideAmounts } = usePrivacy()
@@ -22,33 +23,32 @@ export default function AccountInvestedPanel({ values = [], onSaved }) {
   }
 
   return (
-    <section className="rounded-md border border-line bg-surface">
-      <div className="flex items-center justify-between gap-2 border-b border-line bg-panel px-4 py-3">
-        <div className="text-sm font-medium">投資帳戶已投入金額</div>
-        <button
-          type="button"
-          onClick={() => setOpen((current) => !current)}
-          className="rounded-md border border-line p-1.5 text-slate-400 sm:hidden"
-          title={open ? '收起' : '展開'}
-          aria-label={open ? '收起投資帳戶已投入金額' : '展開投資帳戶已投入金額'}
-        >
-          {open ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
-        </button>
-      </div>
-      <div className={`${open ? 'grid' : 'hidden'} gap-2 p-3 sm:grid sm:grid-cols-2 lg:grid-cols-4`}>
+    <section className="overflow-hidden rounded-md border border-line bg-surface">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className="flex w-full items-center justify-between gap-2 bg-panel px-4 py-3 text-left"
+        aria-expanded={open}
+      >
+        <span className="text-sm font-medium">投資帳戶已投入金額</span>
+        {open ? <ChevronUp size={17} className="text-slate-400" /> : <ChevronDown size={17} className="text-slate-400" />}
+      </button>
+      <div className={`${open ? 'grid' : 'hidden'} gap-2 border-t border-line p-3 sm:grid-cols-2 lg:grid-cols-4`}>
         {ACCOUNTS.map((account) => {
           const key = `invested_${account}`
           return (
-            <label key={account} className="grid gap-1 text-xs text-slate-400">
-              {account}
-              <input
-                className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm text-white outline-none focus:border-sky-500"
-                type={hideAmounts ? 'password' : 'number'}
+            <div key={account} className="grid gap-1 text-xs text-slate-400">
+              <span>{account}</span>
+              <MobileNumericInput
                 value={drafts[key] ?? ''}
-                onChange={(event) => setDrafts((current) => ({ ...current, [key]: event.target.value }))}
-                onBlur={() => save(account)}
+                onChange={(value) => setDrafts((current) => ({ ...current, [key]: value }))}
+                label={`${account}已投入金額`}
+                currency={account === '台股' ? 'TWD' : 'USD'}
+                masked={hideAmounts}
+                onComplete={() => save(account)}
+                onDesktopBlur={() => save(account)}
               />
-            </label>
+            </div>
           )
         })}
       </div>
