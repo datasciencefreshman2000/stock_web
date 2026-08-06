@@ -16,7 +16,7 @@ function pageIndex(pathname) {
   return items.findIndex((item) => item.to === pathname)
 }
 
-function shouldIgnoreArrowKey(event) {
+function shouldIgnorePageKey(event) {
   if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return true
   if (document.querySelector('[role="dialog"][aria-modal="true"]')) return true
   const target = event.target
@@ -45,9 +45,9 @@ export default function NavBar() {
   useEffect(() => {
     function onKeyDown(event) {
       if (!window.matchMedia('(min-width: 768px) and (pointer: fine)').matches) return
-      if (!['ArrowLeft', 'ArrowRight'].includes(event.key) || shouldIgnoreArrowKey(event)) return
+      if (!['ArrowUp', 'ArrowDown'].includes(event.key) || shouldIgnorePageKey(event)) return
       event.preventDefault()
-      moveOnePage(event.key === 'ArrowRight' ? 1 : -1, 'keyboard')
+      moveOnePage(event.key === 'ArrowDown' ? 1 : -1, 'keyboard')
     }
 
     window.addEventListener('keydown', onKeyDown)

@@ -28,11 +28,16 @@ const History = lazy(routeLoaders['/history'])
 function AnimatedRoutes() {
   const location = useLocation()
   const direction = Number(location.state?.pageDirection || 0)
-  const animationClass = direction > 0
-    ? 'page-enter-forward'
-    : direction < 0
-      ? 'page-enter-backward'
-      : 'page-enter'
+  const keyboardNavigation = location.state?.navigationSource === 'keyboard'
+  const animationClass = keyboardNavigation && direction > 0
+    ? 'page-enter-down'
+    : keyboardNavigation && direction < 0
+      ? 'page-enter-up'
+      : direction > 0
+        ? 'page-enter-forward'
+        : direction < 0
+          ? 'page-enter-backward'
+          : 'page-enter'
 
   return (
     <div key={location.pathname} className={animationClass}>
