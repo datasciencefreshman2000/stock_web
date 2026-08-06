@@ -1,20 +1,20 @@
 import { Loader2 } from 'lucide-react'
 
-export function LoadingBlock({ label = '載入中' }) {
+export function LoadingBlock({ label = '載入中', fullscreen = false }) {
   return (
-    <div className="soft-pop relative overflow-hidden rounded-md border border-line bg-surface p-5 text-slate-300">
-      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-sky-300 to-transparent loading-sweep" />
-      <div className="absolute right-4 top-4 h-12 w-12 rounded-full border border-sky-400/20 loading-orbit" aria-hidden="true" />
-      <div className="relative flex items-center gap-3">
-        <Loader2 size={18} className="animate-spin text-sky-300" />
-      <div>
-        <div className="text-sm font-medium text-slate-200">{label}</div>
-        <div className="mt-1 flex gap-1" aria-hidden="true">
+    <div
+      className={`grid w-full place-items-center bg-[#0b1020] px-4 ${fullscreen ? 'min-h-screen' : 'min-h-[50vh]'}`}
+      role="status"
+      aria-live="polite"
+    >
+      <div className="soft-pop flex flex-col items-center justify-center text-center text-slate-300">
+        <Loader2 size={58} strokeWidth={1.5} className="animate-spin text-sky-300 drop-shadow-[0_0_12px_rgba(56,189,248,0.25)]" />
+        <div className="mt-4 text-xs font-medium text-slate-400">{label}</div>
+        <div className="mt-2 flex gap-1" aria-hidden="true">
           <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-sky-300 [animation-delay:-0.2s]" />
           <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-sky-300 [animation-delay:-0.1s]" />
           <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-sky-300" />
         </div>
-      </div>
       </div>
     </div>
   )

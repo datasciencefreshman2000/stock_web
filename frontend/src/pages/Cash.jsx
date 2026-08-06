@@ -289,23 +289,24 @@ export default function Cash() {
           <h1 className="text-2xl font-semibold">現金</h1>
           <p className="mt-1 text-sm text-slate-400">USD/TWD {Number(usdRate || 0).toFixed(2)}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="grid w-full grid-cols-2 items-center gap-2 sm:flex sm:w-auto">
           {deferred.pending ? (
-            <span className="text-[11px] text-slate-500">同步中…</span>
+            <span className="col-span-2 text-right text-[11px] text-slate-500 sm:col-span-1">同步中…</span>
           ) : null}
           <button
             type="button"
             onClick={openLedgerEntry}
-            className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/60 bg-emerald-500/10 px-3 py-2 text-xs font-medium text-emerald-100 transition hover:bg-emerald-500/20 active:scale-[0.98]"
+            className="inline-flex items-center justify-center gap-1.5 rounded-md border border-emerald-400/70 bg-emerald-500/15 px-3 py-2 text-xs font-medium text-emerald-50 shadow-sm shadow-emerald-950/40 transition hover:border-emerald-300 hover:bg-emerald-500/25 active:scale-[0.97]"
           >
-            <PenLine size={15} />
+            <PenLine size={17} />
             記帳
           </button>
           <Link
             to="/cash/ledger"
-            className="inline-flex items-center gap-1.5 rounded-md border border-sky-500/60 bg-sky-500/10 px-3 py-2 text-xs font-medium text-sky-100 transition hover:bg-sky-500/20 active:scale-[0.98]"
+            state={{ pageDirection: 1, navigationSource: 'cash-action' }}
+            className="inline-flex items-center justify-center gap-1.5 rounded-md border border-sky-500/60 bg-sky-500/10 px-3 py-2 text-xs font-medium text-sky-100 transition hover:bg-sky-500/20 active:scale-[0.97]"
           >
-            <ReceiptText size={15} />
+            <ReceiptText size={17} />
             記帳紀錄
           </Link>
         </div>

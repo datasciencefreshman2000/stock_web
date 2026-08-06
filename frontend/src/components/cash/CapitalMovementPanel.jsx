@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, ChevronUp, Loader2, MessageSquareText } from 'lucide-react'
 
 import { api } from '../../api/client'
@@ -15,7 +15,9 @@ function unique(items) {
 
 export default function CapitalMovementPanel({ bankNames, positiveBankNames, onSaved,
                                                openSignal = 0, openMode = null }) {
+  const sectionRef = useRef(null)
   const [panelOpen, setPanelOpen] = useState(false)
+  const [attention, setAttention] = useState(false)
   const [mode, setMode] = useState('income')
 
   // 外部（例如現金頁的「記帳」按鈕）要求展開並切到指定模式。
@@ -24,6 +26,17 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
     if (!openSignal) return
     setPanelOpen(true)
     if (openMode) setMode(openMode)
+    setAttention(false)
+
+    const scrollTimer = window.setTimeout(() => {
+      sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      setAttention(true)
+    }, 80)
+    const attentionTimer = window.setTimeout(() => setAttention(false), 1100)
+    return () => {
+      window.clearTimeout(scrollTimer)
+      window.clearTimeout(attentionTimer)
+    }
   }, [openSignal, openMode])
   const [exchange, setExchange] = useState(false)
   const [noteOpen, setNoteOpen] = useState(false)
@@ -159,7 +172,10 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
   const amountLabel = mode === 'income' ? '收入金額' : mode === 'transfer' ? '調動金額' : mode === 'expense' ? '支出金額' : '其他金額'
 
   return (
-    <section className="overflow-hidden rounded-md border border-line bg-surface">
+    <section
+      ref={sectionRef}
+      className={`scroll-mt-4 overflow-hidden rounded-md border bg-surface transition-[border-color,box-shadow] duration-300 sm:scroll-mt-6 ${attention ? 'ledger-focus border-sky-400/80' : 'border-line'}`}
+    >
       <button
         type="button"
         onClick={() => setPanelOpen((open) => !open)}
@@ -171,7 +187,7 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
       </button>
 
       {panelOpen ? (
-        <div className="border-t border-line">
+        <div className="ledger-panel-enter border-t border-line">
           <div className="grid grid-cols-4 gap-2 p-3">
             {[
               ['income', '收入'],

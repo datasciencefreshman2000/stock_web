@@ -3,6 +3,7 @@ import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom'
 
 import NavBar from './components/NavBar'
 import PrivacyToggle from './components/PrivacyToggle'
+import { LoadingBlock } from './components/StateBlock'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { PrivacyProvider } from './context/PrivacyContext'
 import Dashboard from './pages/Dashboard'
@@ -26,10 +27,16 @@ const History = lazy(routeLoaders['/history'])
 
 function AnimatedRoutes() {
   const location = useLocation()
+  const direction = Number(location.state?.pageDirection || 0)
+  const animationClass = direction > 0
+    ? 'page-enter-forward'
+    : direction < 0
+      ? 'page-enter-backward'
+      : 'page-enter'
 
   return (
-    <div key={location.pathname} className="page-enter">
-      <Suspense fallback={<div className="py-16 text-center text-sm text-slate-500">載入中…</div>}>
+    <div key={location.pathname} className={animationClass}>
+      <Suspense fallback={<LoadingBlock label="正在載入頁面" />}>
         <Routes location={location}>
           <Route path="/" element={<Dashboard />} />
           <Route path="/holdings" element={<Holdings />} />
@@ -70,7 +77,7 @@ function AuthedApp() {
   const { status } = useAuth()
 
   if (status === 'checking') {
-    return <div className="grid min-h-screen place-items-center bg-[#0b1020] text-slate-500">載入中…</div>
+    return <LoadingBlock label="正在確認登入狀態" fullscreen />
   }
 
   if (status !== 'signed-in') {
