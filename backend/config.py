@@ -22,6 +22,14 @@ class Settings(BaseSettings):
     # 只在本機開發時設為 true，會完全關閉 API 驗證
     auth_disabled: bool = False
 
+    # --- 報價快取 ---
+    # 刷新時，價格快取若比這個秒數還新就直接沿用，不打外部 API。
+    # ⚠ 這個值是「實際更新頻率」的下限：
+    #    cron 設每 5 分鐘、但 TTL 是 600 秒的話，實際上仍然 10 分鐘才更新一次。
+    #    要更即時就把兩者一起調小。
+    price_refresh_ttl_seconds: int = 600
+    rate_refresh_ttl_seconds: int = 3600
+
     # --- A4 FIFO checkpoint ---
     # 結算間隔（小時）；只在這段期間內有交易異動時才重新結算
     fifo_settle_interval_hours: int = 12

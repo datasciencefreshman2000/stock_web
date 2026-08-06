@@ -28,6 +28,30 @@ def list_latest_checkpoints(account: str, on_or_before: str) -> dict[str, dict]:
     return latest
 
 
+def list_latest_checkpoints_for_accounts(
+    accounts: list[str], on_or_before: str
+) -> dict[str, dict[str, dict]]:
+    """一次取得多個帳戶的最新 checkpoint，避免逐帳戶查詢。"""
+    if not accounts:
+        return {}
+    response = (
+        get_supabase()
+        .table("fifo_checkpoints")
+        .select("*")
+        .in_("account", accounts)
+        .lte("as_of_date", on_or_before)
+        .order("as_of_date", desc=True)
+        .execute()
+    )
+    latest: dict[str, dict[str, dict]] = {account: {} for account in accounts}
+    for row in response.data or []:
+        account = row.get("account")
+        ticker = row.get("ticker")
+        if account in latest and ticker:
+            latest[account].setdefault(ticker, row)
+    return latest
+
+
 def upsert_checkpoints(rows: list[dict]) -> list[dict]:
     if not rows:
         return []

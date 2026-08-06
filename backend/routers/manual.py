@@ -1,7 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
+from datetime import datetime, timedelta, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from dependencies import require_auth
-from models import CapitalMovementCreate, CapitalMovementOptionCreate, CapitalMovementUpdate, CashCreate, CashUpdate, ManualInvestmentCreate, ManualInvestmentUpdate, ManualValueUpdate
+from models import CapitalMovementCreate, CapitalMovementOptionCreate, CapitalMovementUpdate, CashCreate, CashUpdate, ManualInvestmentBulkUpdate, ManualInvestmentCreate, ManualInvestmentUpdate, ManualValueUpdate
 from repositories.manual import (
     list_cash_accounts,
     create_cash,
@@ -18,14 +20,44 @@ from repositories.manual import (
     list_manual_investments,
     update_capital_movement,
     update_manual_investment,
+    update_manual_investments,
     update_cash,
     upsert_manual_value,
 )
 from repositories.summary_cache import clear_summary_cache
+from services.cache_patch import refresh_cash_and_manual_in_cache
 from services.accounts import ACCOUNTS, CASH_ACCOUNT_NAMES, invested_key
 
 # 整個 router 都需要登入
 router = APIRouter(dependencies=[Depends(require_auth)])
+TAIPEI_TZ = timezone(timedelta(hours=8))
+
+
+def month_bounds(month: str) -> tuple[str, str]:
+    year, month_number = (int(part) for part in month.split("-"))
+    start = datetime(year, month_number, 1)
+    next_month = datetime(year + (month_number == 12), 1 if month_number == 12 else month_number + 1, 1)
+    return start.date().isoformat(), next_month.date().isoformat()
+
+
+def money_changed(scope: str) -> None:
+    """現金／手動投資變動：只重算便宜的部分並 patch 回快取。
+
+    這類寫入不影響 FIFO，沒有理由讓下一個 GET 完整重算
+    （完整重算約 11 次 DB 往返，patch 只要 5 次）。
+
+    退路有兩層：
+      1. 沒有快取可 patch → 刪除，讓下次 GET 重建
+      2. patch 過程出任何錯 → 也刪除。快取算錯比慢更糟，
+         寧可退回重算也不要留下不一致的資料。
+    """
+    try:
+        if refresh_cash_and_manual_in_cache(scope):
+            return
+    except Exception:
+        pass
+    clear_summary_cache()
+
 
 
 @router.get("")
@@ -36,21 +68,21 @@ def get_manual() -> dict:
 @router.patch("/value")
 def patch_manual_value(update: ManualValueUpdate) -> dict:
     value = upsert_manual_value(update.key, update.value)
-    clear_summary_cache()
+    money_changed("invested" if update.key.startswith("invested_") else "manual")
     return {"success": True, "value": value}
 
 
 @router.patch("/cash/{cash_id}")
 def patch_cash(cash_id: str, update: CashUpdate) -> dict:
     cash = update_cash(cash_id, update.amount, update.currency)
-    clear_summary_cache()
+    money_changed("cash")
     return {"success": True, "cash": cash}
 
 
 @router.post("/cash")
 def add_cash(payload: CashCreate) -> dict:
     cash = create_cash(payload.model_dump())
-    clear_summary_cache()
+    money_changed("cash")
     return {"success": True, "cash": cash}
 
 
@@ -58,7 +90,7 @@ def add_cash(payload: CashCreate) -> dict:
 def add_investment(payload: ManualInvestmentCreate) -> dict:
     try:
         investment = create_manual_investment(payload.model_dump())
-        clear_summary_cache()
+        money_changed("investment")
         return {"success": True, "investment": investment}
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -68,8 +100,20 @@ def add_investment(payload: ManualInvestmentCreate) -> dict:
 def patch_investment(investment_id: str, payload: ManualInvestmentUpdate) -> dict:
     try:
         investment = update_manual_investment(investment_id, payload.model_dump())
-        clear_summary_cache()
+        money_changed("investment")
         return {"success": True, "investment": investment}
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.patch("/investments")
+def patch_investments(payload: ManualInvestmentBulkUpdate) -> dict:
+    try:
+        investments = update_manual_investments([
+            item.model_dump(mode="json") for item in payload.investments
+        ])
+        money_changed("investment")
+        return {"success": True, "investments": investments}
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -78,15 +122,19 @@ def patch_investment(investment_id: str, payload: ManualInvestmentUpdate) -> dic
 def remove_investment(investment_id: str) -> dict:
     try:
         delete_manual_investment(investment_id)
-        clear_summary_cache()
+        money_changed("investment")
         return {"success": True}
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.get("/capital-movements")
-def get_capital_movements() -> dict:
-    return {"movements": list_capital_movements()}
+def get_capital_movements(
+    month: str | None = Query(default=None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
+) -> dict:
+    selected_month = month or datetime.now(TAIPEI_TZ).strftime("%Y-%m")
+    start_date, end_date = month_bounds(selected_month)
+    return {"month": selected_month, "movements": list_capital_movements(start_date, end_date)}
 
 
 @router.get("/capital-movement-options")
@@ -115,7 +163,7 @@ def add_capital_movement(payload: CapitalMovementCreate) -> dict:
         if movement.get("id"):
             delete_capital_movement(movement["id"])
         raise
-    clear_summary_cache()
+    money_changed("movement")
     return {"success": True, "movement": movement}
 
 
@@ -248,7 +296,7 @@ def patch_capital_movement(movement_id: str, payload: CapitalMovementUpdate) -> 
     except Exception:
         update_capital_movement(movement_id, capital_movement_payload(previous))
         raise
-    clear_summary_cache()
+    money_changed("movement")
     return {"success": True, "movement": movement}
 
 
@@ -266,5 +314,5 @@ def remove_capital_movement(movement_id: str) -> dict:
     except Exception:
         restore_balance_changes(changes, cash_rows, {})
         raise
-    clear_summary_cache()
+    money_changed("movement")
     return {"success": True}

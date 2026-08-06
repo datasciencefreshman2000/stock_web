@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { api } from '../api/client'
 import { queryKeys } from '../lib/queryClient'
@@ -34,12 +35,25 @@ export function useTradesQuery(account, params = {}, enabled = true) {
   })
 }
 
+export function useTradeTickersQuery(account) {
+  return useQuery({
+    queryKey: queryKeys.tradeTickers(account),
+    queryFn: () => api.getTradeTickers(account),
+    enabled: Boolean(account),
+    staleTime: 30 * 60 * 1000,
+  })
+}
+
 export function useManualQuery() {
   return useQuery({ queryKey: queryKeys.manual, queryFn: api.getManual })
 }
 
-export function useCapitalMovementsQuery() {
-  return useQuery({ queryKey: queryKeys.capitalMovements, queryFn: api.getCapitalMovements })
+export function useCapitalMovementsQuery(month) {
+  return useQuery({
+    queryKey: queryKeys.capitalMovements(month),
+    queryFn: () => api.getCapitalMovements(month),
+    enabled: Boolean(month),
+  })
 }
 
 export function useCapitalMovementOptionsQuery(category = 'income_source') {
@@ -52,38 +66,122 @@ export function useCapitalMovementOptionsQuery(category = 'income_source') {
 // --- 寫入 -----------------------------------------------------------------
 
 /**
- * 任何會影響金額的寫入都要讓相關快取失效。
- * 後端在交易異動時也會清掉 summary_cache 與 FIFO checkpoint，
- * 前端這邊只是讓畫面跟著重讀。
+ * 依「實際改了什麼」決定要失效哪些 query。
+ *
+ * 之前這裡不分青紅皂白讓四組全部失效，造成現金頁每改一個欄位
+ * 就重打 summary + portfolio + trades + manual，而 summary 的快取
+ * 又被後端刪掉了，於是每次都要完整重算（約 16 次 DB 往返）。
+ * 改 5 個欄位就是 110 次往返、7–13 秒。
+ *
+ * scope 說明：
+ *   'cash'    現金餘額      → 影響 summary 與 manual，不影響 trades
+ *   'manual'  基金/投資項目  → 同上
+ *   'trades'  交易紀錄      → 影響全部（FIFO 會變）
+ *   'all'     不確定時的保險
  */
+const SCOPE_KEYS = {
+  cash: [
+    { queryKey: queryKeys.summary, exact: true },
+    { queryKey: ['portfolio'] },
+    { queryKey: queryKeys.manual, exact: true },
+  ],
+  manual: [
+    { queryKey: queryKeys.summary, exact: true },
+    { queryKey: ['portfolio'] },
+    { queryKey: queryKeys.manual, exact: true },
+  ],
+  movement: [
+    { queryKey: queryKeys.summary, exact: true },
+    { queryKey: ['portfolio'] },
+    { queryKey: queryKeys.manual, exact: true },
+    { queryKey: ['capital-movements'] },
+  ],
+  trades: [
+    { queryKey: queryKeys.summary, exact: true },
+    { queryKey: ['portfolio'] },
+    { queryKey: ['trades'] },
+    { queryKey: ['trade-tickers'] },
+  ],
+}
+SCOPE_KEYS.all = Object.values(SCOPE_KEYS).flat()
+
 export function useInvalidateMoney() {
   const client = useQueryClient()
-  return async () => {
-    await Promise.all([
-      client.invalidateQueries({ queryKey: ['summary'] }),
-      client.invalidateQueries({ queryKey: ['portfolio'] }),
-      client.invalidateQueries({ queryKey: ['trades'] }),
-      client.invalidateQueries({ queryKey: ['manual'], exact: true }),
-      client.invalidateQueries({ queryKey: ['manual', 'capital-movements'] }),
-    ])
-
-    // Route changes can otherwise reuse an inactive pre-save result during staleTime.
-    const inactiveKeys = [['summary'], ['portfolio'], ['trades'], ['manual']]
-    inactiveKeys.forEach((queryKey) => {
-      client.removeQueries({ queryKey, type: 'inactive' })
+  return useCallback(async (scope = 'all') => {
+    const scopes = Array.isArray(scope) ? scope : [scope]
+    const unique = new Map()
+    scopes.forEach((name) => {
+      const entries = SCOPE_KEYS[name] || SCOPE_KEYS.all
+      entries.forEach((entry) => unique.set(`${entry.queryKey.join('|')}:${entry.exact || false}`, entry))
     })
-  }
+    const entries = [...unique.values()]
+    await Promise.all(entries.map((entry) => client.invalidateQueries(entry)))
+    // 換頁時可能沿用 staleTime 內的舊結果，把非作用中的直接丟掉
+    entries.forEach((entry) => client.removeQueries({ ...entry, type: 'inactive' }))
+  }, [client])
+}
+
+/**
+ * 延遲並合併失效 —— 連續輸入時不要每筆都等重算。
+ *
+ * 呼叫後不會立刻失效，而是排一個計時器；期間內再次呼叫會把計時器重設。
+ * 所以連續記 10 筆支出只會在最後停手後觸發「一次」重算。
+ *
+ * 回傳：
+ *   schedule(scope)  排定一次延遲失效
+ *   flush()          立刻執行（例如離開頁面前）
+ *   pending          是否還有排隊中的更新（可拿來顯示「同步中」）
+ */
+export function useDeferredInvalidate(delay = 1500) {
+  const invalidate = useInvalidateMoney()
+  const timerRef = useRef(null)
+  const scopesRef = useRef(new Set())
+  const [pending, setPending] = useState(false)
+
+  const run = useCallback(async () => {
+    timerRef.current = null
+    setPending(false)
+    const scopes = [...scopesRef.current]
+    scopesRef.current.clear()
+    await invalidate(scopes.length ? scopes : 'all')
+  }, [invalidate])
+
+  const schedule = useCallback((scope = 'all') => {
+    scopesRef.current.add(scope)
+    setPending(true)
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(run, delay)
+  }, [run, delay])
+
+  const flush = useCallback(async () => {
+    if (!timerRef.current) return
+    clearTimeout(timerRef.current)
+    await run()
+  }, [run])
+
+  // 離開頁面時把還沒送出的失效補做掉
+  useEffect(() => () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current)
+      timerRef.current = null
+      const scopes = [...scopesRef.current]
+      scopesRef.current.clear()
+      void invalidate(scopes.length ? scopes : 'all')
+    }
+  }, [invalidate])
+
+  return { schedule, flush, pending }
 }
 
 export function useTradeMutations() {
   const invalidate = useInvalidateMoney()
 
-  const add = useMutation({ mutationFn: api.addTrade, onSuccess: invalidate })
+  const add = useMutation({ mutationFn: api.addTrade, onSuccess: () => invalidate('trades') })
   const update = useMutation({
     mutationFn: ({ id, data }) => api.updateTrade(id, data),
-    onSuccess: invalidate,
+    onSuccess: () => invalidate('trades'),
   })
-  const remove = useMutation({ mutationFn: api.deleteTrade, onSuccess: invalidate })
+  const remove = useMutation({ mutationFn: api.deleteTrade, onSuccess: () => invalidate('trades') })
 
   return { add, update, remove }
 }
@@ -94,22 +192,22 @@ export function useManualMutations() {
   return {
     updateValue: useMutation({
       mutationFn: ({ key, value }) => api.updateManualValue(key, value),
-      onSuccess: invalidate,
+      onSuccess: () => invalidate('manual'),
     }),
     updateCash: useMutation({
       mutationFn: ({ id, amount, currency }) => api.updateCash(id, amount, currency),
-      onSuccess: invalidate,
+      onSuccess: () => invalidate('cash'),
     }),
-    createCash: useMutation({ mutationFn: api.createCash, onSuccess: invalidate }),
-    createInvestment: useMutation({ mutationFn: api.createInvestment, onSuccess: invalidate }),
+    createCash: useMutation({ mutationFn: api.createCash, onSuccess: () => invalidate('cash') }),
+    createInvestment: useMutation({ mutationFn: api.createInvestment, onSuccess: () => invalidate('manual') }),
     updateInvestment: useMutation({
       mutationFn: ({ id, data }) => api.updateInvestment(id, data),
-      onSuccess: invalidate,
+      onSuccess: () => invalidate('manual'),
     }),
-    deleteInvestment: useMutation({ mutationFn: api.deleteInvestment, onSuccess: invalidate }),
+    deleteInvestment: useMutation({ mutationFn: api.deleteInvestment, onSuccess: () => invalidate('manual') }),
     createCapitalMovement: useMutation({
       mutationFn: api.createCapitalMovement,
-      onSuccess: invalidate,
+      onSuccess: () => invalidate('movement'),
     }),
   }
 }
@@ -117,7 +215,7 @@ export function useManualMutations() {
 /** 手動刷新：等後端抓完價、重算完，再讓所有快取失效。 */
 export function useRefreshAll() {
   const invalidate = useInvalidateMoney()
-  const mutation = useMutation({ mutationFn: api.refreshAll, onSuccess: invalidate })
+  const mutation = useMutation({ mutationFn: api.refreshAll, onSuccess: () => invalidate('all') })
 
   return {
     refreshing: mutation.isPending,

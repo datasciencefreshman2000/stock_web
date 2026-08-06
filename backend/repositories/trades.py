@@ -44,6 +44,15 @@ def list_trades(
     return rows
 
 
+def list_trade_tickers(account: str) -> list[str]:
+    """只讀取代號欄位，供新增交易的 datalist 使用。"""
+    accounts = account_filter_values(account)
+    query = get_supabase().table("trades").select("ticker")
+    query = query.in_("account", accounts) if len(accounts) > 1 else query.eq("account", accounts[0])
+    response = query.order("ticker").execute()
+    return sorted({str(row.get("ticker") or "").strip().upper() for row in response.data or [] if row.get("ticker")})
+
+
 def get_trade(trade_id: str) -> dict | None:
     response = get_supabase().table("trades").select("*").eq("id", trade_id).limit(1).execute()
     rows = response.data or []

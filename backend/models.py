@@ -99,6 +99,14 @@ class ManualInvestmentUpdate(BaseModel):
     currency: str | None = None
 
 
+class ManualInvestmentBulkItem(ManualInvestmentCreate):
+    id: str = Field(min_length=1)
+
+
+class ManualInvestmentBulkUpdate(BaseModel):
+    investments: list[ManualInvestmentBulkItem] = Field(min_length=1)
+
+
 class CapitalMovementCreate(BaseModel):
     movement_date: Date
     from_bucket: str | None = None

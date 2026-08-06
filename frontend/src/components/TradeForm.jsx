@@ -1,13 +1,15 @@
 import { Loader2 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { api } from '../api/client'
 import MobileNumericInput from './cash/MobileNumericInput'
 import { ACCOUNTS } from '../constants'
 import { maskAmount, usePrivacy } from '../context/PrivacyContext'
 import { money } from '../utils/format'
+import { useTradeTickersQuery } from '../hooks/queries'
 
 const today = new Date().toISOString().slice(0, 10)
+const EMPTY_TICKERS = []
 
 function estimateTwFee(price, qty) {
   return Math.max(Math.trunc(Number(price || 0) * Number(qty || 0) * 0.001425 * 0.6), 1)
@@ -44,11 +46,32 @@ const initialForm = {
 export default function TradeForm({ onSubmit, submitting }) {
   const { hideAmounts } = usePrivacy()
   const [form, setForm] = useState(initialForm)
-  const [tickers, setTickers] = useState([])
-  const [tickerLoading, setTickerLoading] = useState(false)
+  const tickersQuery = useTradeTickersQuery(form.account)
   const [tickerHint, setTickerHint] = useState('')
+  const [localError, setLocalError] = useState('')
   const [companyName, setCompanyName] = useState('')
   const [companyLoading, setCompanyLoading] = useState(false)
+
+  // 鍵盤流程：代號 → Enter → 買賣（←→ 切換）→ Enter → 股數 → Enter → 價格 → Enter → 送出
+  const tickerRef = useRef(null)
+  const sideRef = useRef(null)
+  const qtyRef = useRef(null)
+  const priceRef = useRef(null)
+
+  // 進頁面時把游標放到代號。只在桌機做 —— 手機上自動聚焦會直接彈出鍵盤，很煩。
+  useEffect(() => {
+    if (window.matchMedia('(min-width: 640px)').matches) tickerRef.current?.focus()
+  }, [])
+
+  /** Enter 預設會直接送出表單，這裡改成「跳下一格」。 */
+  function enterTo(ref) {
+    return (event) => {
+      if (event.key !== 'Enter') return
+      event.preventDefault()      // ← 沒有這行，表單會帶著空的股數/價格送出，
+      ref.current?.focus()        //   後端回 422，畫面就跳出那個紅框
+      ref.current?.select?.()
+    }
+  }
 
   const isTw = form.account === ACCOUNTS[0]
   const isUs = form.account === ACCOUNTS[1] || form.account === ACCOUNTS[2]
@@ -60,6 +83,7 @@ export default function TradeForm({ onSubmit, submitting }) {
   )
   const gross = Number(form.price || 0) * Number(form.qty || 0)
   const total = form.side === 'buy' ? gross + fee : gross - fee - tax
+  const tickers = tickersQuery.data?.tickers || EMPTY_TICKERS
   const tickerSuggestions = useMemo(() => {
     const keyword = form.ticker.trim().toUpperCase()
     if (!keyword) return tickers.slice(0, 12)
@@ -72,28 +96,6 @@ export default function TradeForm({ onSubmit, submitting }) {
       })
       .slice(0, 12)
   }, [form.ticker, tickers])
-
-  useEffect(() => {
-    let active = true
-    setTickerLoading(true)
-    api
-      .getTrades(form.account)
-      .then((data) => {
-        if (!active) return
-        const unique = [...new Set((data.trades || []).map((trade) => trade.ticker).filter(Boolean))]
-        setTickers(unique.sort())
-      })
-      .catch(() => {
-        if (active) setTickers([])
-      })
-      .finally(() => {
-        if (active) setTickerLoading(false)
-      })
-
-    return () => {
-      active = false
-    }
-  }, [form.account])
 
   useEffect(() => {
     const ticker = form.ticker.trim().toUpperCase()
@@ -145,9 +147,33 @@ export default function TradeForm({ onSubmit, submitting }) {
     })
   }
 
+  /** 買賣那格：←→ 切換、Enter 進到股數。 */
+  function handleSideKeyDown(event) {
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      event.preventDefault()
+      update('side', event.key === 'ArrowLeft' ? 'buy' : 'sell')
+      return
+    }
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      qtyRef.current?.focus()
+      qtyRef.current?.select?.()
+    }
+  }
+
   async function submit(event) {
     event.preventDefault()
+
+    // 先在前端擋掉，不要讓後端回 422 ——
+    // 那個錯誤格式是物件陣列，也是紅框顯示 [object Object] 的原因
     const qty = Number(form.qty)
+    if (!form.ticker.trim()) return setLocalError('請輸入股票代號')
+    if (!Number.isFinite(qty) || qty <= 0) return setLocalError('請輸入大於 0 的股數')
+    if (!Number.isFinite(Number(form.price)) || Number(form.price) <= 0) {
+      return setLocalError('請輸入大於 0 的價格')
+    }
+    setLocalError('')
+
     const payload = {
       account: form.account,
       ticker: form.ticker.trim().toUpperCase(),
@@ -162,6 +188,8 @@ export default function TradeForm({ onSubmit, submitting }) {
     if (ok) {
       setForm((current) => ({ ...initialForm, account: current.account, date: current.date }))
       setTickerHint('已新增，頁面保留在新增交易。')
+      // 游標回到代號，可以直接打下一筆
+      tickerRef.current?.focus()
     }
   }
 
@@ -188,11 +216,13 @@ export default function TradeForm({ onSubmit, submitting }) {
         <label className="grid gap-2 text-sm">
           代號
           <input
+            ref={tickerRef}
             className="rounded-md border border-line bg-[#0b1020] px-3 py-2"
             value={form.ticker}
             list="ticker-suggestions"
             onChange={(event) => updateTicker(event.target.value)}
-            placeholder={tickerLoading ? '讀取曾輸入代號...' : '輸入股票代號'}
+            onKeyDown={enterTo(sideRef)}
+            placeholder={tickersQuery.isLoading ? '讀取曾輸入代號...' : '輸入股票代號'}
             required
           />
           <datalist id="ticker-suggestions">
@@ -215,8 +245,12 @@ export default function TradeForm({ onSubmit, submitting }) {
 
       <div className="grid gap-3 sm:grid-cols-3 sm:gap-4">
         <div className="grid gap-2 text-sm">
-          買賣
-          <div className="grid grid-cols-2 gap-2">
+          <span className="flex items-center gap-2">
+            買賣
+            <span className="hidden text-[10px] text-slate-600 sm:inline">← → 切換</span>
+          </span>
+          {/* roving tabindex：只有選中的那顆進 tab 順序，←→ 切換選擇 */}
+          <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="買賣">
             {[
               ['buy', '買入'],
               ['sell', '賣出'],
@@ -224,6 +258,11 @@ export default function TradeForm({ onSubmit, submitting }) {
               <button
                 key={side}
                 type="button"
+                role="radio"
+                aria-checked={form.side === side}
+                ref={form.side === side ? sideRef : null}
+                tabIndex={form.side === side ? 0 : -1}
+                onKeyDown={handleSideKeyDown}
                 onClick={() => update('side', side)}
                 className={`rounded-md border px-3 py-2 text-sm font-medium transition hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 active:scale-[0.98] ${
                   form.side === side
@@ -249,6 +288,8 @@ export default function TradeForm({ onSubmit, submitting }) {
             currency="股"
             maxDecimals={4}
             allowZero={false}
+            inputRef={qtyRef}
+            onDesktopKeyDown={enterTo(priceRef)}
           />
         </div>
         <div className="grid gap-2 text-sm">
@@ -261,6 +302,8 @@ export default function TradeForm({ onSubmit, submitting }) {
             maxDecimals={4}
             allowZero={false}
             masked={hideAmounts}
+            inputRef={priceRef}
+            // 最後一格：Enter 就送出（不 preventDefault，讓表單自己送）
           />
         </div>
       </div>
@@ -297,6 +340,10 @@ export default function TradeForm({ onSubmit, submitting }) {
         <div>證交稅：{form.side === 'sell' ? (hideAmounts ? maskAmount(money(tax)) : money(tax)) : '--'}</div>
         <div>交易總額：{hideAmounts ? maskAmount(money(total)) : money(total)}</div>
       </div>
+
+      {localError ? (
+        <div className="rounded-md border border-rose-900 bg-rose-950/40 px-3 py-2 text-sm text-rose-100">{localError}</div>
+      ) : null}
 
       <button
         disabled={submitting}

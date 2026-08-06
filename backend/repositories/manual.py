@@ -172,6 +172,37 @@ def update_manual_investment(investment_id: str, payload: dict) -> dict:
     return response.data[0] if response.data else {"id": investment_id, **clean}
 
 
+def update_manual_investments(rows: list[dict]) -> list[dict]:
+    """一次更新多筆基金資料，避免每列各自觸發快取修補。"""
+    if not rows:
+        return []
+    attempted_rows = [{key: value for key, value in row.items() if value is not None} for row in rows]
+    try:
+        response = (
+            get_supabase()
+            .table("manual_investments")
+            .upsert(attempted_rows, on_conflict="id")
+            .execute()
+        )
+    except Exception as exc:
+        if is_missing_manual_investments_error(exc):
+            raise RuntimeError(MANUAL_INVESTMENTS_MISSING) from exc
+        message = str(exc)
+        if any(f"'{column}' column" in message for column in MANUAL_INVESTMENT_OPTIONAL_COLUMNS):
+            for row in attempted_rows:
+                for column in MANUAL_INVESTMENT_OPTIONAL_COLUMNS:
+                    row.pop(column, None)
+            response = (
+                get_supabase()
+                .table("manual_investments")
+                .upsert(attempted_rows, on_conflict="id")
+                .execute()
+            )
+        else:
+            raise
+    return response.data or attempted_rows
+
+
 def delete_manual_investment(investment_id: str) -> None:
     try:
         get_supabase().table("manual_investments").delete().eq("id", investment_id).execute()
@@ -181,12 +212,14 @@ def delete_manual_investment(investment_id: str) -> None:
         raise
 
 
-def list_capital_movements() -> list[dict]:
+def list_capital_movements(start_date: str, end_date: str) -> list[dict]:
     try:
         response = (
             get_supabase()
             .table("capital_movements")
             .select("*")
+            .gte("movement_date", start_date)
+            .lt("movement_date", end_date)
             .order("movement_date", desc=True)
             .order("created_at", desc=True)
             .execute()

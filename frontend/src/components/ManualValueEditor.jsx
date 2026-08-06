@@ -95,7 +95,7 @@ export default function ManualValueEditor({ investments = [], onSaved }) {
     setSaving('all')
     setError('')
     try {
-      await Promise.all(rows.map((row) => api.updateInvestment(row.id, payloadFor(row))))
+      await api.updateInvestments(rows.map((row) => ({ id: row.id, ...payloadFor(row) })))
       setDrafts({})
       await onSaved?.()
     } catch (err) {

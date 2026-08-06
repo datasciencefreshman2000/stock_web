@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { Suspense, lazy, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
 
-import AssetPieChart from '../components/AssetPieChart'
+// 圓餅圖背後是 recharts，體積不小。數字才是你進站要看的東西，
+// 圖表晚一點到沒關係 —— 分開載入可以讓上面的金額先出現。
+const AssetPieChart = lazy(() => import('../components/AssetPieChart'))
 import CashRatioSection from '../components/dashboard/CashRatioSection'
 import PriceStatus from '../components/PriceStatus'
 import { ErrorBlock, LoadingBlock } from '../components/StateBlock'
@@ -16,6 +18,7 @@ import {
   investmentValueTwd,
 } from '../utils/investments'
 import { money, percent, pnlClass } from '../utils/format'
+import { formatStamp, freshnessClass, freshnessLabel } from '../utils/freshness'
 
 export default function Dashboard() {
   const [selectedInvestmentGroup, setSelectedInvestmentGroup] = useState(null)
@@ -32,7 +35,9 @@ export default function Dashboard() {
     day: '2-digit',
     weekday: 'short',
   }).format(new Date())
-  const summaryTime = data?.summary_cached_at ? new Date(data.summary_cached_at).toLocaleString('zh-TW') : null
+  const cachedAt = data?.summary_cached_at
+  const summaryTime = cachedAt ? formatStamp(cachedAt) : null
+  const summaryAge = cachedAt ? freshnessLabel(cachedAt) : null
 
   if (loading && !data) return <LoadingBlock label="正在讀取總覽資料" />
   if (error && !data) return <ErrorBlock error={error} />
@@ -142,8 +147,9 @@ export default function Dashboard() {
       <header>
         {summaryTime ? (
           <div className="flex justify-end">
-            <div className="max-w-[11rem] text-right text-xs leading-tight text-slate-500">
-              {data.summary_cached ? '快取' : '更新'} {summaryTime}
+            <div className="max-w-[13rem] text-right text-xs leading-tight">
+              <span className={freshnessClass(cachedAt)}>{summaryAge}</span>
+              <span className="ml-1.5 text-slate-500">{summaryTime}</span>
             </div>
           </div>
         ) : null}
@@ -193,6 +199,7 @@ export default function Dashboard() {
 
       {/* 圓餅圖：手機單張滑動 carousel，桌機 3 欄 grid */}
       <section>
+        <Suspense fallback={<div className="h-64 animate-pulse rounded-md border border-line bg-panel/40" />}>
         {/* 手機 carousel */}
         <div className="scrollbar-hide flex snap-x snap-mandatory gap-3 overflow-x-auto pb-3 lg:hidden">
           {pieCharts.map((chart) => (
@@ -223,6 +230,7 @@ export default function Dashboard() {
             />
           ))}
         </div>
+        </Suspense>
       </section>
 
       {/* 帳戶現金比例 */}

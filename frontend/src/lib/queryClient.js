@@ -9,7 +9,10 @@ export const queryClient = new QueryClient({
     queries: {
       staleTime: 5 * 60 * 1000,
       gcTime: 30 * 60 * 1000,
-      refetchOnWindowFocus: false,
+      // 從別的分頁 / 別的 App 切回來時重讀一次。
+      // 成本是每次切回來 1 次 GET，而且後端直接命中快取（1 次 DB 往返），
+      // 換到的是「回來看到的一定不是半小時前的數字」。
+      refetchOnWindowFocus: true,
       retry: (failureCount, error) => {
         // 401 是要重新登入，重試沒有意義
         if (error?.status === 401) return false
@@ -24,8 +27,9 @@ export const queryKeys = {
   portfolio: (account) => ['portfolio', account],
   buyLots: (account, ticker) => ['portfolio', account, 'lots', ticker],
   trades: (account, params) => ['trades', account, params],
-  manual: ['manual'],
-  capitalMovements: ['manual', 'capital-movements'],
-  capitalMovementOptions: (category) => ['manual', 'capital-movement-options', category],
+  tradeTickers: (account) => ['trade-tickers', account],
+  manual: ['manual', 'data'],
+  capitalMovements: (month) => ['capital-movements', month],
+  capitalMovementOptions: (category) => ['capital-movement-options', category],
   jobStatus: ['jobs', 'status'],
 }

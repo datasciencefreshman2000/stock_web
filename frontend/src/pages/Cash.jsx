@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronUp, ReceiptText } from 'lucide-react'
+import { ChevronDown, ChevronUp, PenLine, ReceiptText } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import { api } from '../api/client'
@@ -11,7 +11,7 @@ import { BANK_ROWS, BASE_ROWS, DEBOUNCE_MS } from '../components/cash/constants'
 import { ErrorBlock, LoadingBlock } from '../components/StateBlock'
 import SummaryCard from '../components/SummaryCard'
 import { maskAmount, usePrivacy } from '../context/PrivacyContext'
-import { useInvalidateMoney, useManualQuery, useSummaryQuery } from '../hooks/queries'
+import { useDeferredInvalidate, useInvalidateMoney, useManualQuery, useSummaryQuery } from '../hooks/queries'
 import { money } from '../utils/format'
 
 export default function Cash() {
@@ -19,6 +19,9 @@ export default function Cash() {
   const manualQuery = useManualQuery()
   const summaryQuery = useSummaryQuery()
   const invalidateMoney = useInvalidateMoney()
+  // 連續記帳時不要每筆都等重算，停手 1.5 秒後才合併觸發一次
+  const deferred = useDeferredInvalidate(1500)
+  const [ledgerSignal, setLedgerSignal] = useState(0)
 
   // 保留舊有的 { data, error, loading } 形狀，下面的畫面程式碼不用改
   const manual = { data: manualQuery.data, error: manualQuery.error, loading: manualQuery.isLoading }
@@ -76,6 +79,7 @@ export default function Cash() {
     if (processingRef.current) return
     processingRef.current = true
 
+    let saved = 0
     while (queueRef.current.size > 0) {
       const [key, job] = queueRef.current.entries().next().value
       queueRef.current.delete(key)
@@ -104,13 +108,17 @@ export default function Cash() {
           job.item[job.currency] = created
         }
         setStatus(key, 'saved')
-        invalidateMoney()
+        saved += 1
       } catch {
         setStatus(key, 'error')
       }
     }
 
     processingRef.current = false
+
+    // 整個佇列清空之後才失效一次。
+    // 先前是每存一個欄位就失效，改 5 個欄位會觸發 5 輪完整重算。
+    if (saved > 0) deferred.schedule('cash')
   }
 
   function enqueueSave(item, currency, rawValue) {
@@ -174,8 +182,13 @@ export default function Cash() {
     return twd + usd * usdRate
   }
 
-  async function refreshMoneyNow() {
-    await invalidateMoney()
+  // 記帳存檔後只排程一次延遲失效，連續輸入時會自動合併
+  function refreshMoneyNow() {
+    deferred.schedule('movement')
+  }
+
+  function openLedgerEntry() {
+    setLedgerSignal((n) => n + 1)
   }
 
   const totals = grouped.reduce(
@@ -276,13 +289,26 @@ export default function Cash() {
           <h1 className="text-2xl font-semibold">現金</h1>
           <p className="mt-1 text-sm text-slate-400">USD/TWD {Number(usdRate || 0).toFixed(2)}</p>
         </div>
-        <Link
-          to="/cash/ledger"
-          className="inline-flex items-center gap-1.5 rounded-md border border-sky-500/60 bg-sky-500/10 px-3 py-2 text-xs font-medium text-sky-100 transition hover:bg-sky-500/20 active:scale-[0.98]"
-        >
-          <ReceiptText size={15} />
-          記帳紀錄
-        </Link>
+        <div className="flex items-center gap-2">
+          {deferred.pending ? (
+            <span className="text-[11px] text-slate-500">同步中…</span>
+          ) : null}
+          <button
+            type="button"
+            onClick={openLedgerEntry}
+            className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/60 bg-emerald-500/10 px-3 py-2 text-xs font-medium text-emerald-100 transition hover:bg-emerald-500/20 active:scale-[0.98]"
+          >
+            <PenLine size={15} />
+            記帳
+          </button>
+          <Link
+            to="/cash/ledger"
+            className="inline-flex items-center gap-1.5 rounded-md border border-sky-500/60 bg-sky-500/10 px-3 py-2 text-xs font-medium text-sky-100 transition hover:bg-sky-500/20 active:scale-[0.98]"
+          >
+            <ReceiptText size={15} />
+            記帳紀錄
+          </Link>
+        </div>
       </header>
 
       <section className={`grid gap-3 ${summaryOpen ? 'sm:grid-cols-3' : ''}`}>
@@ -317,7 +343,13 @@ export default function Cash() {
         ]}
       />
 
-      <CapitalMovementPanel bankNames={bankNames} positiveBankNames={positiveBankNames} onSaved={refreshMoneyNow} />
+      <CapitalMovementPanel
+        bankNames={bankNames}
+        positiveBankNames={positiveBankNames}
+        onSaved={refreshMoneyNow}
+        openSignal={ledgerSignal}
+        openMode="expense"
+      />
       <AccountInvestedPanel values={manual.data?.values || []} onSaved={refreshMoneyNow} />
 
       <section className="overflow-hidden rounded-md border border-line bg-surface">

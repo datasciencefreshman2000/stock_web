@@ -23,6 +23,9 @@ export default function MobileNumericInput({
   disabled = false,
   allowZero = true,
   desktopClassName = '',
+  // 桌機版那顆 <input> 的直通參數，讓外面可以接管鍵盤操作
+  inputRef,
+  onDesktopKeyDown,
 }) {
   const [open, setOpen] = useState(false)
   const [localError, setLocalError] = useState('')
@@ -72,6 +75,7 @@ export default function MobileNumericInput({
         {shownValue !== '' ? shownValue : '點選輸入金額'}
       </button>
       <input
+        ref={inputRef}
         aria-label={label}
         className={`hidden w-full rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm text-white outline-none focus:border-sky-500 sm:block ${desktopClassName}`}
         type={masked ? 'password' : 'number'}
@@ -79,6 +83,7 @@ export default function MobileNumericInput({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         onBlur={onDesktopBlur}
+        onKeyDown={onDesktopKeyDown}
         disabled={disabled}
       />
       {open
@@ -124,19 +129,20 @@ export default function MobileNumericInput({
                   </div>
                 ) : null}
                 <div className={`mt-3 grid gap-2 ${secondaryLabel ? 'grid-cols-[3fr_1fr]' : 'grid-cols-1'}`}>
+                  {/* busy 只用來顯示狀態，不再擋住按鈕 ——
+                      送出已經改成背景佇列，使用者可以連續輸入下一筆 */}
                   <button
                     type="button"
                     onClick={complete}
-                    disabled={disabled || busy || !Number.isFinite(Number(value)) || (!allowZero && Number(value) <= 0)}
+                    disabled={disabled || !Number.isFinite(Number(value)) || (!allowZero && Number(value) <= 0)}
                     className="rounded-md bg-sky-500 px-3 py-3 text-sm font-medium text-white active:scale-[0.98] disabled:opacity-40"
                   >
-                    {busy ? '儲存中' : primaryLabel}
+                    {primaryLabel}
                   </button>
                   {secondaryLabel ? (
                     <button
                       type="button"
                       onClick={() => setOpen(false)}
-                      disabled={busy}
                       className="rounded-md border border-line bg-panel px-1 py-2 text-[11px] font-medium leading-tight text-slate-200 active:scale-[0.96] disabled:opacity-40"
                     >
                       {secondaryLabel}

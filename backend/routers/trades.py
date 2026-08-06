@@ -10,6 +10,7 @@ from repositories.trades import (
     create_trade,
     delete_trade,
     get_trade,
+    list_trade_tickers,
     list_trades,
     update_trade,
 )
@@ -52,6 +53,11 @@ async def get_ticker_info(account: str, ticker: str, _: dict = Depends(require_a
     normalized = ticker.strip().upper()
     names = await resolve_company_names(account, [normalized], settings.fugle_api_key)
     return {"ticker": normalized, "company_name": names.get(normalized)}
+
+
+@router.get("/{account}/tickers")
+def get_trade_tickers(account: str, _: dict = Depends(require_auth)) -> dict:
+    return {"account": account, "tickers": list_trade_tickers(account)}
 
 
 @router.get("/{account}")

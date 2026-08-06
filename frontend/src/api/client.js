@@ -39,6 +39,47 @@ class ApiError extends Error {
   }
 }
 
+/** 欄位代號 → 看得懂的名稱。FastAPI 只會回英文欄位名。 */
+const FIELD_LABELS = {
+  ticker: '代號',
+  price: '價格',
+  buy_qty: '買入股數',
+  sell_qty: '賣出股數',
+  qty: '股數',
+  date: '日期',
+  account: '帳戶',
+  fee: '手續費',
+  amount: '金額',
+  currency: '幣別',
+  movement_date: '日期',
+  from_bucket: '來源',
+  to_bucket: '去向',
+}
+
+/**
+ * 把 FastAPI 的錯誤內容轉成一句人看得懂的話。
+ *
+ * 422 驗證錯誤的 detail 是**物件陣列**：
+ *   [{ loc: ["body","price"], msg: "Input should be greater than 0", ... }]
+ * 直接丟給 new Error() 會變成字串 "[object Object]" ——
+ * 這就是新增交易頁那個紅框的來源。
+ */
+function formatDetail(detail) {
+  if (!detail) return ''
+  if (typeof detail === 'string') return detail
+  if (!Array.isArray(detail)) return detail.msg || JSON.stringify(detail)
+
+  return detail
+    .map((item) => {
+      if (typeof item === 'string') return item
+      const field = Array.isArray(item.loc) ? item.loc[item.loc.length - 1] : ''
+      const label = FIELD_LABELS[field] || field
+      const msg = item.msg || '格式不正確'
+      return label ? `${label}：${msg}` : msg
+    })
+    .join('；')
+}
+
 async function request(path, options = {}) {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) }
   if (token) headers.Authorization = `Bearer ${token}`
@@ -55,7 +96,7 @@ async function request(path, options = {}) {
     let message = `API error: ${res.status}`
     try {
       const body = await res.json()
-      message = body.detail || message
+      message = formatDetail(body.detail) || message
     } catch {
       // Keep default message.
     }
@@ -98,6 +139,7 @@ export const api = {
     const suffix = query.toString() ? `?${query}` : ''
     return request(`/trades/${encodeURIComponent(account)}${suffix}`)
   },
+  getTradeTickers: (account) => request(`/trades/${encodeURIComponent(account)}/tickers`),
   getTickerInfo: (account, ticker) =>
     request(`/trades/${encodeURIComponent(account)}/ticker/${encodeURIComponent(ticker)}`),
   addTrade: (data) => request('/trades', { method: 'POST', body: JSON.stringify(data) }),
@@ -122,8 +164,11 @@ export const api = {
   createInvestment: (data) => request('/manual/investment', { method: 'POST', body: JSON.stringify(data) }),
   updateInvestment: (id, data) =>
     request(`/manual/investment/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  updateInvestments: (investments) =>
+    request('/manual/investments', { method: 'PATCH', body: JSON.stringify({ investments }) }),
   deleteInvestment: (id) => request(`/manual/investment/${id}`, { method: 'DELETE' }),
-  getCapitalMovements: () => request('/manual/capital-movements'),
+  getCapitalMovements: (month) =>
+    request(`/manual/capital-movements?month=${encodeURIComponent(month)}`),
   createCapitalMovement: (data) => request('/manual/capital-movements', { method: 'POST', body: JSON.stringify(data) }),
   updateCapitalMovement: (id, data) =>
     request(`/manual/capital-movements/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),

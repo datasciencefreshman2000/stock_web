@@ -10,11 +10,14 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends
 
+from config import get_settings
 from dependencies import require_auth_or_cron
 from repositories.job_runs import get_job_run, record_job_run
 from repositories.snapshots import normalize_snapshot_time, snapshot_taipei_parts, upsert_snapshots
+from repositories.summary_cache import SUMMARY_CACHE_KEY, portfolio_cache_key, upsert_summary_caches
 from repositories.trades import latest_trade_change_at, list_trades
 from services.accounts import ACCOUNTS
+from services.prices import resolve_company_names_batch
 from services.settlement import checkpoint_boundary, settle_account, should_settle
 
 router = APIRouter()
@@ -22,19 +25,59 @@ router = APIRouter()
 SETTLE_JOB = "fifo_settle"
 
 
-async def _refresh_all(refresh_prices: bool) -> dict:
-    from routers.portfolio import refresh_portfolio_cache
-    from routers.summary import refresh_summary_cache
+async def rebuild_all_caches(refresh_prices: bool) -> dict:
+    """把 summary 與三個帳戶的持倉快取一次全部重建。
 
-    summary = await refresh_summary_cache(refresh_prices=refresh_prices)
-    portfolios = []
-    for account in ACCOUNTS:
-        # summary 已經把最新報價寫進 price_cache，各帳戶不必再打一次外部 API
-        cached = await refresh_portfolio_cache(account, refresh_prices=False)
-        portfolios.append(
-            {"account": account, "summary_cached_at": (cached or {}).get("summary_cached_at")}
+    兩個重點：
+
+    1. **只跑一次 FIFO。** 先前是 summary 算完 FIFO，三個 portfolio
+       再各自把同一份 FIFO 重算一次 —— 整批交易被跑了兩遍。
+       `working` 就是用來把中間結果傳下去的。
+
+    2. **這個函式也給 GET 用。** 交易異動會清掉全部四把快取，
+       如果每個 GET 各自重建自己那一把，使用者改一筆交易之後
+       載入總覽 + 三個持倉頁要 41 次往返、FIFO 跑兩遍。
+       改成「第一個發現快取不在的 GET 就把四把全部建好」，降到 17 次。
+
+    回傳 {"summary": payload, "portfolios": {account: payload}}。
+    """
+    from routers.portfolio import portfolio_from_working_set
+    from routers.summary import calculate_summary
+
+    working: dict = {}
+    summary = await calculate_summary(refresh_prices=refresh_prices, collect=working)
+    company_names = await resolve_company_names_batch(
+        {
+            account: working["by_account"][account]["tickers"]
+            for account in ACCOUNTS
+        },
+        get_settings().fugle_api_key,
+    )
+    portfolios = {
+        account: await portfolio_from_working_set(
+            account, working, company_names=company_names.get(account, {})
         )
+        for account in ACCOUNTS
+    }
+    updated_at = upsert_summary_caches({
+        SUMMARY_CACHE_KEY: summary,
+        **{portfolio_cache_key(account): payload for account, payload in portfolios.items()},
+    })
+    for payload in [summary, *portfolios.values()]:
+        payload["summary_cached"] = False
+        payload["summary_cached_at"] = updated_at
     return {"summary": summary, "portfolios": portfolios}
+
+
+async def _refresh_all(refresh_prices: bool) -> dict:
+    result = await rebuild_all_caches(refresh_prices)
+    return {
+        "summary": result["summary"],
+        "portfolios": [
+            {"account": account, "summary_cached_at": (payload or {}).get("summary_cached_at")}
+            for account, payload in result["portfolios"].items()
+        ],
+    }
 
 
 @router.post("/refresh")

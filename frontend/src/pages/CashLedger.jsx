@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ArrowLeft, Edit3, Save, Trash2, X } from 'lucide-react'
+import { ArrowLeft, ChevronLeft, ChevronRight, Edit3, Save, Trash2, X } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 
@@ -15,6 +15,17 @@ import { money } from '../utils/format'
 
 function unique(items) {
   return [...new Set(items.filter(Boolean))]
+}
+
+function currentMonth() {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+}
+
+function shiftMonth(value, offset) {
+  const [year, month] = value.split('-').map(Number)
+  const date = new Date(year, month - 1 + offset, 1)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
 }
 
 function movementType(row) {
@@ -83,7 +94,8 @@ function displayNote(row) {
 
 export default function CashLedger() {
   const { hideAmounts } = usePrivacy()
-  const movementsQuery = useCapitalMovementsQuery()
+  const [month, setMonth] = useState(currentMonth)
+  const movementsQuery = useCapitalMovementsQuery(month)
   const manualQuery = useManualQuery()
   const queryClient = useQueryClient()
   const [filter, setFilter] = useState('all')
@@ -115,6 +127,13 @@ export default function CashLedger() {
     setMessage('')
   }
 
+  function selectMonth(nextMonth) {
+    setMonth(nextMonth)
+    setEditingId('')
+    setForm(null)
+    setMessage('')
+  }
+
   function update(key, value) {
     setForm((current) => ({ ...current, [key]: value }))
   }
@@ -136,15 +155,18 @@ export default function CashLedger() {
   }
 
   function replaceMovement(movement) {
-    queryClient.setQueryData(queryKeys.capitalMovements, (current) => ({
+    queryClient.setQueryData(queryKeys.capitalMovements(month), (current) => ({
       ...(current || {}),
-      movements: (current?.movements || []).map((row) => (row.id === movement.id ? movement : row)),
+      movements: (current?.movements || []).flatMap((row) => {
+        if (row.id !== movement.id) return [row]
+        return String(movement.movement_date || '').startsWith(month) ? [movement] : []
+      }),
     }))
     markDependentDataStale()
   }
 
   function removeMovementFromCache(movementId) {
-    queryClient.setQueryData(queryKeys.capitalMovements, (current) => ({
+    queryClient.setQueryData(queryKeys.capitalMovements(month), (current) => ({
       ...(current || {}),
       movements: (current?.movements || []).filter((row) => row.id !== movementId),
     }))
@@ -208,6 +230,35 @@ export default function CashLedger() {
           <p className="mt-1 text-sm text-slate-400">檢視並修正收入、調動與支出</p>
         </div>
       </header>
+
+      <section className="grid grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-2 rounded-md border border-line bg-surface p-2 sm:ml-auto sm:max-w-sm">
+        <button
+          type="button"
+          onClick={() => selectMonth(shiftMonth(month, -1))}
+          className="grid h-10 w-10 place-items-center rounded-md text-slate-300 transition hover:bg-panel hover:text-white active:scale-[0.96]"
+          aria-label="上一個月"
+          title="上一個月"
+        >
+          <ChevronLeft size={18} />
+        </button>
+        <input
+          type="month"
+          value={month}
+          onChange={(event) => selectMonth(event.target.value || currentMonth())}
+          className="min-w-0 rounded-md border border-line bg-[#0b1020] px-3 py-2 text-center text-sm font-medium text-white"
+          aria-label="選擇記帳月份"
+        />
+        <button
+          type="button"
+          onClick={() => selectMonth(shiftMonth(month, 1))}
+          disabled={month >= currentMonth()}
+          className="grid h-10 w-10 place-items-center rounded-md text-slate-300 transition hover:bg-panel hover:text-white active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-30"
+          aria-label="下一個月"
+          title="下一個月"
+        >
+          <ChevronRight size={18} />
+        </button>
+      </section>
 
       <div className="grid grid-cols-5 gap-1 rounded-md border border-line bg-surface p-1">
         {Object.entries(TYPE_LABELS).map(([key, label]) => (
@@ -341,7 +392,7 @@ export default function CashLedger() {
                 </div>
               )
             })}
-            {!movements.length ? <div className="px-4 py-8 text-center text-sm text-slate-500">這個分類目前沒有記帳紀錄</div> : null}
+            {!movements.length ? <div className="px-4 py-8 text-center text-sm text-slate-500">{month} 沒有符合條件的記帳紀錄</div> : null}
           </div>
         </section>
       ) : null}

@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends
 
 from config import get_settings
 from dependencies import require_auth
-from repositories.fifo_checkpoints import list_latest_checkpoints
+from repositories.fifo_checkpoints import list_latest_checkpoints_for_accounts
 from repositories.manual import list_cash_accounts, list_manual_investments, list_manual_values
 from repositories.summary_cache import get_summary_cache, upsert_summary_cache
 from repositories.trades import list_trades
@@ -24,7 +24,12 @@ from services.accounts import (
 from services.calculator import active_tickers, build_holdings_from_results, summarize_account_from_results
 from services.constants import MANUAL_COSTS
 from services.prices import PriceContext, fetch_prices_batch, fetch_usd_rate, get_price_status
-from services.settlement import analyze_account, checkpoint_boundary, group_by_ticker, load_reference_data
+from services.settlement import (
+    analyze_account,
+    checkpoint_boundary,
+    group_by_ticker,
+    load_reference_data_for_symbols,
+)
 from services.symbols import is_tw_account, symbol_for
 
 router = APIRouter()
@@ -64,11 +69,19 @@ def enrich_manual_investment(row: dict, usd_rate: float) -> dict:
     }
 
 
-async def calculate_summary(refresh_prices: bool = False) -> dict:
-    """重算總覽。只有排程 / 手動刷新會用 refresh_prices=True 打外部 API。"""
+async def calculate_summary(refresh_prices: bool = False, collect: dict | None = None) -> dict:
+    """重算總覽。只有排程 / 手動刷新會用 refresh_prices=True 打外部 API。
+
+    collect 傳入一個 dict 時，會把中途算好的東西留在裡面
+    （每個帳戶的 FIFO 結果、報價、匯率、現金列、手動欄位）。
+
+    為什麼要這樣：/jobs/refresh 先算 summary、再算三個 portfolio，
+    但兩邊算的是**同一份 FIFO**。不共用的話等於每次排程都把
+    全部交易跑兩遍，還多花 21 次 DB 往返。
+    """
     settings = get_settings()
     context = PriceContext()
-    usd_rate = await fetch_usd_rate(refresh=refresh_prices)
+    usd_rate = await fetch_usd_rate(refresh=refresh_prices, context=context)
 
     manual_rows = {row["key"]: float(row["value"]) for row in list_manual_values()}
 
@@ -79,19 +92,27 @@ async def calculate_summary(refresh_prices: bool = False) -> dict:
             trades_by_account[trade["account"]].append(trade)
 
     boundary = checkpoint_boundary()
+    checkpoints_by_account = list_latest_checkpoints_for_accounts(ACCOUNTS, boundary)
+    tickers_by_account_all = {
+        account: sorted(group_by_ticker(trades_by_account[account]).keys())
+        for account in ACCOUNTS
+    }
+    # 一次把全部帳戶的參考資料讀完（先前是每帳戶 2 次，共 6 次）
+    actions_by_symbol, etf_symbols = load_reference_data_for_symbols(
+        [symbol_for(a, t) for a, ts in tickers_by_account_all.items() for t in ts]
+    )
+
     fifo_by_account: dict[str, dict] = {}
     tickers_by_account: dict[str, list[str]] = {}
     all_symbols: list[str] = []
 
     for account in ACCOUNTS:
-        trades = trades_by_account[account]
-        tickers = sorted(group_by_ticker(trades).keys())
+        tickers = tickers_by_account_all[account]
         if tickers:
-            actions_by_symbol, etf_symbols = load_reference_data(account, tickers)
             results = analyze_account(
                 account,
-                trades,
-                checkpoints=list_latest_checkpoints(account, boundary),
+                trades_by_account[account],
+                checkpoints=checkpoints_by_account.get(account),
                 actions_by_symbol=actions_by_symbol,
                 etf_symbols=etf_symbols,
             )
@@ -126,6 +147,12 @@ async def calculate_summary(refresh_prices: bool = False) -> dict:
         summary = summarize_account_from_results(fifo_by_account[account], holdings)
         enrich_account_summary(summary, account, usd_rate, manual_rows.get(invested_key(account)))
         accounts[account] = summary
+        if collect is not None:
+            collect.setdefault("by_account", {})[account] = {
+                "fifo": fifo_by_account[account],
+                "prices": prices,
+                "tickers": tickers_by_account[account],
+            }
         if account in OWN_ACCOUNTS:
             own_account_total += summary["account_total_twd"]
         if account in EXTERNAL_ACCOUNTS:
@@ -153,6 +180,10 @@ async def calculate_summary(refresh_prices: bool = False) -> dict:
 
     own_total = own_account_total + investment_total + manual_investment_cash_total + own_cash_total
 
+    if collect is not None:
+        collect.update({"usd_rate": usd_rate, "manual_rows": manual_rows,
+                        "cash_rows": cash_rows, "context": context})
+
     return {
         "usd_rate": usd_rate,
         "accounts": accounts,
@@ -175,8 +206,17 @@ async def refresh_summary_cache(refresh_prices: bool = True) -> dict:
 
 @router.get("/summary")
 async def get_summary(_: dict = Depends(require_auth)) -> dict:
-    """只讀快取。快取不存在時就地重算一次（不打外部報價 API）。"""
+    """只讀快取。快取不存在時就地重算（不打外部報價 API）。
+
+    重算時**連三個帳戶的持倉快取一起建好**。理由：
+    交易異動會把四把快取一起清掉，接下來使用者不管切到哪一頁都會
+    踩到空快取。各自重建的話同一份 FIFO 會被算好幾遍。
+    """
     cached = get_summary_cache()
     if cached:
         return filter_known_accounts(cached)
-    return filter_known_accounts(upsert_summary_cache(await calculate_summary(refresh_prices=False)))
+
+    from routers.jobs import rebuild_all_caches
+
+    result = await rebuild_all_caches(refresh_prices=False)
+    return filter_known_accounts(result["summary"])

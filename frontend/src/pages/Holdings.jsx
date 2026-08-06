@@ -172,7 +172,7 @@ export default function Holdings() {
       {active.error ? <ErrorBlock error={active.error} /> : null}
 
       {!active.loading && !active.error && isManual ? (
-        <ManualValueEditor investments={manual.data?.investments || []} onSaved={invalidateMoney} />
+        <ManualValueEditor investments={manual.data?.investments || []} onSaved={() => invalidateMoney('manual')} />
       ) : null}
 
       {!active.loading && !active.error && !isManual ? (

@@ -1,30 +1,44 @@
+import { Suspense, lazy } from 'react'
 import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom'
 
 import NavBar from './components/NavBar'
 import PrivacyToggle from './components/PrivacyToggle'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { PrivacyProvider } from './context/PrivacyContext'
-import AddTrade from './pages/AddTrade'
-import Cash from './pages/Cash'
-import CashLedger from './pages/CashLedger'
 import Dashboard from './pages/Dashboard'
-import History from './pages/History'
-import Holdings from './pages/Holdings'
 import Login from './pages/Login'
+import { routeLoaders } from './routeLoaders'
+
+/**
+ * 除了首頁以外的頁面改成動態載入。
+ *
+ * 為什麼：原本所有頁面打包成單一 722 kB 的 JS，進站要先下載並解析完
+ * 才看得到任何東西。手機上這是實際感受得到的等待，而且你多半是先看總覽，
+ * 「新增交易」那頁的程式碼在那一刻根本用不到。
+ *
+ * Dashboard 不做 lazy —— 它是進站第一眼會看到的，切出去反而多一次往返。
+ */
+const Holdings = lazy(routeLoaders['/holdings'])
+const Cash = lazy(routeLoaders['/cash'])
+const CashLedger = lazy(routeLoaders['/cash/ledger'])
+const AddTrade = lazy(routeLoaders['/add-trade'])
+const History = lazy(routeLoaders['/history'])
 
 function AnimatedRoutes() {
   const location = useLocation()
 
   return (
     <div key={location.pathname} className="page-enter">
-      <Routes location={location}>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/holdings" element={<Holdings />} />
-        <Route path="/cash" element={<Cash />} />
-        <Route path="/cash/ledger" element={<CashLedger />} />
-        <Route path="/add-trade" element={<AddTrade />} />
-        <Route path="/history" element={<History />} />
-      </Routes>
+      <Suspense fallback={<div className="py-16 text-center text-sm text-slate-500">載入中…</div>}>
+        <Routes location={location}>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/holdings" element={<Holdings />} />
+          <Route path="/cash" element={<Cash />} />
+          <Route path="/cash/ledger" element={<CashLedger />} />
+          <Route path="/add-trade" element={<AddTrade />} />
+          <Route path="/history" element={<History />} />
+        </Routes>
+      </Suspense>
     </div>
   )
 }

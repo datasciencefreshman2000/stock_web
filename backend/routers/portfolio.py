@@ -59,7 +59,7 @@ async def calculate_portfolio(account: str, refresh_prices: bool = False) -> dic
     holdings = build_holdings_from_results(fifo_results, prices, company_names)
     dashboard = summarize_account_from_results(fifo_results, holdings)
 
-    usd_rate = await fetch_usd_rate(refresh=False)
+    usd_rate = await fetch_usd_rate(refresh=False, context=context)
     manual_rows = {row["key"]: float(row["value"]) for row in list_manual_values()}
     enrich_account_summary(dashboard, account, usd_rate, manual_rows.get(invested_key(account)))
     dashboard["cash"] = cash_summary(list_cash_accounts(), usd_rate, account)
@@ -73,8 +73,44 @@ async def calculate_portfolio(account: str, refresh_prices: bool = False) -> dic
     }
 
 
-async def refresh_portfolio_cache(account: str, refresh_prices: bool = True) -> dict:
-    portfolio = await calculate_portfolio(account, refresh_prices=refresh_prices)
+async def portfolio_from_working_set(
+    account: str, working: dict, company_names: dict[str, str | None] | None = None
+) -> dict:
+    """用 calculate_summary 已經算好的東西組出持倉頁，不再重跑 FIFO。
+
+    summary 與 portfolio 對同一個帳戶算的是同一份 FIFO 結果，
+    差別只在 portfolio 多了公司名稱、少了跨帳戶彙總。
+    """
+    settings = get_settings()
+    part = working["by_account"][account]
+    usd_rate = working["usd_rate"]
+
+    if company_names is None:
+        company_names = await resolve_company_names(account, part["tickers"], settings.fugle_api_key)
+    holdings = build_holdings_from_results(part["fifo"], part["prices"], company_names)
+    dashboard = summarize_account_from_results(part["fifo"], holdings)
+    enrich_account_summary(
+        dashboard, account, usd_rate, working["manual_rows"].get(invested_key(account))
+    )
+    dashboard["cash"] = cash_summary(working["cash_rows"], usd_rate, account)
+    dashboard["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    return {
+        "account": account,
+        "holdings": holdings,
+        "dashboard": dashboard,
+        "price_status": get_price_status(working.get("context")),
+    }
+
+
+async def refresh_portfolio_cache(
+    account: str, refresh_prices: bool = True, working: dict | None = None
+) -> dict:
+    portfolio = (
+        await portfolio_from_working_set(account, working)
+        if working and account in working.get("by_account", {})
+        else await calculate_portfolio(account, refresh_prices=refresh_prices)
+    )
     return upsert_summary_cache(portfolio, portfolio_cache_key(account))
 
 
@@ -117,4 +153,11 @@ async def get_portfolio(account: str, _: dict = Depends(require_auth)) -> dict:
     cached = get_summary_cache(portfolio_cache_key(account))
     if cached:
         return cached
-    return await refresh_portfolio_cache(account, refresh_prices=False)
+
+    # 同 get_summary：快取空了就把四把一起建好，不要每頁各算一次 FIFO
+    from routers.jobs import rebuild_all_caches
+
+    result = await rebuild_all_caches(refresh_prices=False)
+    return result["portfolios"].get(account) or await refresh_portfolio_cache(
+        account, refresh_prices=False
+    )

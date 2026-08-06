@@ -76,6 +76,24 @@ def _state_to_checkpoint(account: str, ticker: str, as_of_date: str, state: Fifo
     }
 
 
+def load_reference_data_for_symbols(symbols: list[str]) -> tuple[dict[str, list[dict]], set[str]]:
+    """一次把「全部帳戶」的除權息事件與 ETF 標記讀進來。
+
+    先前是每個帳戶各呼叫一次 load_reference_data()，3 個帳戶 = 6 次 DB 往返。
+    合併之後固定 2 次。
+    """
+    from repositories.corporate_actions import list_corporate_actions
+    from repositories.tickers import list_tickers
+
+    symbols = sorted(set(symbols))
+    if not symbols:
+        return {}, set()
+    actions_by_symbol = list_corporate_actions(symbols)
+    ticker_rows = list_tickers(symbols)
+    etf_symbols = {symbol for symbol, row in ticker_rows.items() if row.get("is_etf")}
+    return actions_by_symbol, etf_symbols
+
+
 def load_reference_data(account: str, tickers: list[str]) -> tuple[dict[str, list[dict]], set[str]]:
     """一次載入該帳戶所有標的的除權息事件與 ETF 標記。"""
     from repositories.corporate_actions import list_corporate_actions

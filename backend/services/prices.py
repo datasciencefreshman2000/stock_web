@@ -15,13 +15,23 @@ from datetime import datetime, timezone
 
 import httpx
 
+from config import get_settings
 from repositories.fx_rates import get_fx_rate, upsert_fx_rate
 from repositories.price_cache import list_price_cache, upsert_price_cache_rows
 from repositories.tickers import list_tickers, upsert_tickers
 from services.symbols import is_tw_account, symbol_for
 
-PRICE_REFRESH_TTL_SECONDS = 10 * 60
-RATE_REFRESH_TTL_SECONDS = 60 * 60
+def _price_ttl() -> int:
+    """價格快取的存活秒數。可用環境變數 PRICE_REFRESH_TTL_SECONDS 調整。
+
+    這個值決定「實際」更新頻率的下限 —— 排程再密集，
+    只要快取還在有效期內就不會去打外部 API。
+    """
+    return get_settings().price_refresh_ttl_seconds
+
+
+def _rate_ttl() -> int:
+    return get_settings().rate_refresh_ttl_seconds
 DEFAULT_USD_TWD = 31.316
 
 
@@ -61,6 +71,7 @@ class PriceContext:
 
     prices: dict[str, float | None] = field(default_factory=dict)
     db_cache: dict[str, dict] = field(default_factory=dict)
+    fx_row: dict | None = None          # 這次請求已讀過的匯率，避免重複查
     stats: dict = field(
         default_factory=lambda: {
             "requested": 0,
@@ -169,7 +180,7 @@ async def fetch_prices_batch(
         row = context.db_cache.get(symbol)
         row_price = float(row["price"]) if row and row.get("price") is not None else None
 
-        if row and (not refresh or _is_fresh(row.get("fetched_at"), PRICE_REFRESH_TTL_SECONDS)):
+        if row and (not refresh or _is_fresh(row.get("fetched_at"), _price_ttl())):
             results[ticker] = row_price
             context.prices[symbol] = row_price
             context.stats["cached"] += 1
@@ -235,19 +246,41 @@ async def resolve_company_names(
     tickers: list[str],
     fugle_key: str = "",
 ) -> dict[str, str | None]:
-    unique = sorted({t.strip().upper() for t in tickers if t and t.strip()})
-    if not unique:
-        return {}
+    return (await resolve_company_names_batch({account: tickers}, fugle_key)).get(account, {})
 
-    symbol_by_ticker = {t: symbol_for(account, t) for t in unique}
-    known = list_tickers(list(symbol_by_ticker.values()))
-    names: dict[str, str | None] = {
-        t: (known.get(s) or {}).get("name") for t, s in symbol_by_ticker.items()
+
+async def resolve_company_names_batch(
+    tickers_by_account: dict[str, list[str]], fugle_key: str = ""
+) -> dict[str, dict[str, str | None]]:
+    """一次查詢所有帳戶的公司名稱；缺少的台股名稱再批次向 Fugle 補齊。"""
+    normalized = {
+        account: sorted({t.strip().upper() for t in tickers if t and t.strip()})
+        for account, tickers in tickers_by_account.items()
+    }
+    symbol_maps = {
+        account: {ticker: symbol_for(account, ticker) for ticker in tickers}
+        for account, tickers in normalized.items()
+    }
+    symbols = sorted({symbol for mapping in symbol_maps.values() for symbol in mapping.values()})
+    known = list_tickers(symbols) if symbols else {}
+    names = {
+        account: {
+            ticker: (known.get(symbol) or {}).get("name")
+            for ticker, symbol in symbol_maps[account].items()
+        }
+        for account in normalized
     }
 
-    missing = [t for t, name in names.items() if not name]
-    if not missing or not is_tw_account(account) or not fugle_key:
+    missing_symbols: dict[str, str] = {}
+    for account, account_names in names.items():
+        if not is_tw_account(account):
+            continue
+        for ticker, name in account_names.items():
+            if not name:
+                missing_symbols[symbol_maps[account][ticker]] = ticker
+    if not missing_symbols or not fugle_key:
         return names
+    missing_symbol_by_ticker = {ticker: symbol for symbol, ticker in missing_symbols.items()}
 
     semaphore = asyncio.Semaphore(5)
 
@@ -255,7 +288,7 @@ async def resolve_company_names(
         async with semaphore:
             return ticker, await asyncio.to_thread(_fugle_ticker_info_sync, ticker, fugle_key)
 
-    fetched = dict(await asyncio.gather(*(one(t) for t in missing)))
+    fetched = dict(await asyncio.gather(*(one(t) for t in sorted(set(missing_symbols.values())))))
 
     rows = []
     for ticker, info in fetched.items():
@@ -264,11 +297,10 @@ async def resolve_company_names(
         name = info.get("name")
         if not name:
             continue
-        names[ticker] = name
         market = str(info.get("market") or info.get("exchange") or "").upper()
         rows.append(
             {
-                "symbol": symbol_by_ticker[ticker],
+                "symbol": missing_symbol_by_ticker[ticker],
                 "ticker": ticker,
                 "name": name,
                 "market": "TPEX" if market in {"OTC", "TPEX"} else "TWSE",
@@ -278,6 +310,13 @@ async def resolve_company_names(
         )
 
     upsert_tickers(rows)
+    for account, mapping in symbol_maps.items():
+        for ticker, symbol in mapping.items():
+            if not names[account].get(ticker):
+                names[account][ticker] = next(
+                    (row.get("name") for row in rows if row.get("symbol") == symbol),
+                    None,
+                )
     return names
 
 
@@ -309,11 +348,15 @@ async def _currency_api(client: httpx.AsyncClient) -> float:
     return float(rate)
 
 
-async def fetch_usd_rate(api_key: str = "", refresh: bool = False) -> float:
-    stored = get_fx_rate()
+async def fetch_usd_rate(api_key: str = "", refresh: bool = False,
+                         context: PriceContext | None = None) -> float:
+    """取得 USD/TWD。傳入 context 時，同一次請求內只會查一次資料庫。"""
+    stored = context.fx_row if context and context.fx_row is not None else get_fx_rate()
+    if context is not None:
+        context.fx_row = stored or {}
     stored_rate = float(stored["rate"]) if stored and stored.get("rate") is not None else None
 
-    if stored_rate and (not refresh or _is_fresh(stored.get("fetched_at"), RATE_REFRESH_TTL_SECONDS)):
+    if stored_rate and (not refresh or _is_fresh(stored.get("fetched_at"), _rate_ttl())):
         return stored_rate
 
     if not refresh:
@@ -323,7 +366,9 @@ async def fetch_usd_rate(api_key: str = "", refresh: bool = False) -> float:
         for source, fetcher in (("exchangerate-api", _exchangerate_api), ("currency-api", _currency_api)):
             try:
                 rate = await fetcher(client)
-                upsert_fx_rate(rate, source)
+                row = upsert_fx_rate(rate, source)
+                if context is not None:
+                    context.fx_row = row
                 return rate
             except Exception:
                 continue
@@ -332,8 +377,11 @@ async def fetch_usd_rate(api_key: str = "", refresh: bool = False) -> float:
 
 
 def get_price_status(context: PriceContext | None = None) -> dict:
-    """報價狀態改以資料庫為準；context 提供本次執行的統計。"""
-    stored = get_fx_rate()
+    """報價狀態改以資料庫為準；context 提供本次執行的統計。
+
+    context 已經讀過匯率時直接沿用，不再多查一次。
+    """
+    stored = context.fx_row if context and context.fx_row is not None else get_fx_rate()
     status: dict = {
         "usd_rate": float(stored["rate"]) if stored and stored.get("rate") is not None else None,
         "usd_rate_fetched_at": stored.get("fetched_at") if stored else None,

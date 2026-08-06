@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronUp, Loader2, MessageSquareText } from 'lucide-react'
 
 import { api } from '../../api/client'
+import { useSaveQueue } from '../../hooks/useSaveQueue'
 import { ACCOUNTS } from '../../constants'
 import IncomeSourcePicker from './IncomeSourcePicker'
 import MobileNumericInput from './MobileNumericInput'
@@ -12,9 +13,18 @@ function unique(items) {
   return [...new Set(items.filter(Boolean))]
 }
 
-export default function CapitalMovementPanel({ bankNames, positiveBankNames, onSaved }) {
+export default function CapitalMovementPanel({ bankNames, positiveBankNames, onSaved,
+                                               openSignal = 0, openMode = null }) {
   const [panelOpen, setPanelOpen] = useState(false)
   const [mode, setMode] = useState('income')
+
+  // 外部（例如現金頁的「記帳」按鈕）要求展開並切到指定模式。
+  // 用遞增的 openSignal 當觸發，這樣連按也有效。
+  useEffect(() => {
+    if (!openSignal) return
+    setPanelOpen(true)
+    if (openMode) setMode(openMode)
+  }, [openSignal, openMode])
   const [exchange, setExchange] = useState(false)
   const [noteOpen, setNoteOpen] = useState(false)
   const [form, setForm] = useState({
@@ -30,8 +40,11 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
     to_currency: 'USD',
     note: '',
   })
-  const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
+  // 送出不擋畫面：按下去就排隊，表單立刻清空可以打下一筆。
+  // 送出本身仍維持序列（餘額是讀-改-寫，並行會互相覆蓋）。
+  const queue = useSaveQueue(api.createCapitalMovement, () => onSaved?.())
+  const saving = queue.pending > 0
 
   const incomeDestinations = useMemo(() => unique([...bankNames, ON_HAND_CASH, ACCOUNTS[0]]), [bankNames])
   const transferBuckets = useMemo(() => unique([...bankNames, ON_HAND_CASH, ACCOUNTS[0], ACCOUNTS[1]]), [bankNames])
@@ -92,9 +105,7 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
     })
   }
 
-  async function saveMovement() {
-    if (saving) return false
-    setSaving(true)
+  function saveMovement() {
     setMessage('')
     try {
       const amount = Number(form.amount)
@@ -129,23 +140,20 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
         payload = { ...payload, to_bucket: form.other_type, note: noteWithTag(form.other_type, form.note) }
       }
 
-      await api.createCapitalMovement(payload)
-      await onSaved?.()
-      setMessage('已儲存並更新現金資料')
+      // 排進佇列就回來，不等網路
+      queue.enqueue(payload, `${payload.to_bucket} ${payload.amount}`)
       setNoteOpen(false)
       setForm((current) => ({ ...current, amount: '', to_amount: '', note: '', expense_tags: ['其他'] }))
       return true
     } catch (error) {
       setMessage(error.message || '儲存失敗，請稍後再試')
       return false
-    } finally {
-      setSaving(false)
     }
   }
 
-  async function submit(event) {
+  function submit(event) {
     event.preventDefault()
-    await saveMovement()
+    saveMovement()
   }
 
   const amountLabel = mode === 'income' ? '收入金額' : mode === 'transfer' ? '調動金額' : mode === 'expense' ? '支出金額' : '其他金額'
@@ -276,7 +284,11 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
                 onComplete={mode === 'expense' ? saveMovement : undefined}
                 primaryLabel={mode === 'expense' ? '完成並儲存' : '完成'}
                 secondaryLabel={mode === 'expense' ? '完成並跳出' : undefined}
-                statusMessage={mode === 'expense' ? message : ''}
+                statusMessage={
+                  mode === 'expense'
+                    ? message || (saving ? `背景送出中${queue.pending > 1 ? ` ${queue.pending} 筆` : ''}` : '')
+                    : ''
+                }
                 busy={saving}
                 allowZero={false}
               />
@@ -338,15 +350,31 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
               </label>
             ) : null}
 
-            <button
-              className={`flex items-center justify-center gap-2 rounded-md bg-sky-500 px-4 py-2 text-sm font-medium text-white transition active:scale-[0.99] disabled:opacity-70 lg:col-span-1 ${saving ? 'submit-pulse' : 'hover:bg-sky-400'}`}
-              disabled={saving}
-            >
-              {saving ? <Loader2 size={15} className="animate-spin" /> : null}
-              {saving ? '儲存中' : '儲存紀錄'}
+            {/* 按鈕不再因為儲存中而 disabled —— 可以直接打下一筆 */}
+            <button className="flex items-center justify-center gap-2 rounded-md bg-sky-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-400 active:scale-[0.99] lg:col-span-1">
+              儲存紀錄
             </button>
 
-            {message ? <div className={`text-xs lg:col-span-6 ${message.startsWith('已') ? 'text-emerald-300' : 'text-rose-300'}`}>{message}</div> : null}
+            {saving ? (
+              <div className="flex items-center gap-1.5 text-xs text-slate-400 lg:col-span-5">
+                <Loader2 size={13} className="animate-spin" />
+                背景送出中{queue.pending > 1 ? ` ${queue.pending} 筆` : ''}
+              </div>
+            ) : null}
+
+            {queue.failed.length ? (
+              <div className="grid gap-1 rounded-md border border-rose-500/50 bg-rose-500/10 p-2 text-xs text-rose-100 lg:col-span-6">
+                {queue.failed.map((item) => (
+                  <div key={item.id} className="flex flex-wrap items-center gap-2">
+                    <span className="flex-1">未存成功：{item.label}（{item.error}）</span>
+                    <button type="button" onClick={() => queue.retry(item.id)} className="rounded border border-rose-300/60 px-2 py-0.5">重試</button>
+                    <button type="button" onClick={() => queue.dismiss(item.id)} className="rounded border border-rose-300/30 px-2 py-0.5 text-rose-200/70">丟棄</button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            {message ? <div className="text-xs text-rose-300 lg:col-span-6">{message}</div> : null}
           </form>
         </div>
       ) : null}

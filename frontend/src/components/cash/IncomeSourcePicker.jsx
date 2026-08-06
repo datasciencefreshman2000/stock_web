@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 
 import { api } from '../../api/client'
+import { useCapitalMovementOptionsQuery } from '../../hooks/queries'
+import { queryKeys } from '../../lib/queryClient'
 import { INCOME_SOURCES } from './constants'
 
 export default function IncomeSourcePicker({ value, onChange }) {
@@ -8,23 +11,22 @@ export default function IncomeSourcePicker({ value, onChange }) {
   const [draft, setDraft] = useState('')
   const [message, setMessage] = useState('')
   const [editing, setEditing] = useState(false)
-
-  async function loadSources() {
-    try {
-      const response = await api.getCapitalMovementOptions('income_source')
-      const loaded = response.options || []
-      if (loaded.length > 0) {
-        setSources(loaded)
-        if (!loaded.some((item) => item.label === value)) onChange(loaded[0].label)
-      }
-    } catch {
-      setMessage('收入來源資料表尚未建立')
-    }
-  }
+  const queryClient = useQueryClient()
+  const optionsQuery = useCapitalMovementOptionsQuery('income_source')
 
   useEffect(() => {
-    loadSources()
-  }, [])
+    const loaded = optionsQuery.data?.options || []
+    if (loaded.length > 0) {
+      setSources(loaded)
+      if (!loaded.some((item) => item.label === value)) onChange(loaded[0].label)
+    }
+    if (optionsQuery.error) setMessage('收入來源資料表尚未建立')
+  }, [optionsQuery.data, optionsQuery.error])
+
+  function updateCachedSources(next) {
+    setSources(next)
+    queryClient.setQueryData(queryKeys.capitalMovementOptions('income_source'), { options: next })
+  }
 
   async function addSource() {
     const label = draft.trim()
@@ -32,7 +34,7 @@ export default function IncomeSourcePicker({ value, onChange }) {
     try {
       const response = await api.createCapitalMovementOption({ category: 'income_source', label })
       const option = response.option
-      setSources((current) => [...current.filter((item) => item.label !== label), option].sort((a, b) => a.label.localeCompare(b.label, 'zh-Hant')))
+      updateCachedSources([...sources.filter((item) => item.label !== label), option].sort((a, b) => a.label.localeCompare(b.label, 'zh-Hant')))
       setDraft('')
       onChange(label)
       setMessage('')
@@ -46,7 +48,7 @@ export default function IncomeSourcePicker({ value, onChange }) {
     try {
       await api.deleteCapitalMovementOption(option.id)
       const next = sources.filter((item) => item.id !== option.id)
-      setSources(next)
+      updateCachedSources(next)
       if (option.label === value) onChange(next[0]?.label || '')
       setMessage('')
     } catch (err) {
