@@ -16,11 +16,23 @@ function pageIndex(pathname) {
   return items.findIndex((item) => item.to === pathname)
 }
 
+/**
+ * 換頁用 ← →，把 ↑ ↓ 完整留給欄位本身。
+ *
+ * 為什麼要這樣分：新增交易頁上，↑ ↓ 是三個地方的原生操作 ——
+ *   type="number" 的加減、datalist 股票清單的上下選、買賣的切換。
+ * 換頁如果也用 ↑ ↓ 就會打架。← → 在輸入框裡是移動游標，
+ * 而下面的 shouldIgnorePageKey 本來就會跳過輸入框，兩者不衝突。
+ */
+const PAGE_KEYS = { ArrowLeft: -1, ArrowRight: 1 }
+
 function shouldIgnorePageKey(event) {
   if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return true
   if (document.querySelector('[role="dialog"][aria-modal="true"]')) return true
   const target = event.target
   return target instanceof Element && Boolean(
+    // data-page-keys="off" 是刻意的死角：像「買入／賣出」這種水平排列的
+    // 按鈕組，← → 是使用者最直覺會按的鍵，不該在那裡把人帶去別頁
     target.closest('input, textarea, select, [contenteditable="true"], [role="slider"], [data-page-keys="off"]'),
   )
 }
@@ -45,9 +57,10 @@ export default function NavBar() {
   useEffect(() => {
     function onKeyDown(event) {
       if (!window.matchMedia('(min-width: 768px) and (pointer: fine)').matches) return
-      if (!['ArrowUp', 'ArrowDown'].includes(event.key) || shouldIgnorePageKey(event)) return
+      const step = PAGE_KEYS[event.key]
+      if (!step || shouldIgnorePageKey(event)) return
       event.preventDefault()
-      moveOnePage(event.key === 'ArrowDown' ? 1 : -1, 'keyboard')
+      moveOnePage(step, 'keyboard')
     }
 
     window.addEventListener('keydown', onKeyDown)

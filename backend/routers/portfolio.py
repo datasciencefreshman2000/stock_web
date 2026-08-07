@@ -50,6 +50,7 @@ async def calculate_portfolio(account: str, refresh_prices: bool = False) -> dic
             refresh=refresh_prices,
             fugle_key=settings.fugle_api_key,
             context=context,
+            fetch_missing=True,   # 同 summary：沒抓過價的標的要補抓
         )
         if provider_ready
         else {}

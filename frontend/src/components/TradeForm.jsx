@@ -147,19 +147,39 @@ export default function TradeForm({ onSubmit, submitting }) {
     })
   }
 
-  /** 買賣那格：←→ 切換、Enter 進到股數。 */
-  function handleSideKeyDown(event) {
-    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+  /**
+   * 按鈕組共用的鍵盤行為：↑ ↓ 換選項。
+   *
+   * 用 ↑ ↓ 而不是 ← →，是因為 ← → 是全站換頁鍵（見 NavBar）。
+   * 這兩組按鈕另外標了 data-page-keys="off"，
+   * 所以在上面按 ← → 不會誤跳到別頁。
+   */
+  function arrowSelect(options, key, next) {
+    return (event) => {
+      if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') {
+        if (next && (event.key === 'Enter' || event.key === ' ')) {
+          event.preventDefault()
+          next.current?.focus()
+          next.current?.select?.()
+        }
+        return
+      }
       event.preventDefault()
-      update('side', event.key === 'ArrowLeft' ? 'buy' : 'sell')
-      return
-    }
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault()
-      qtyRef.current?.focus()
-      qtyRef.current?.select?.()
+      const size = options.length
+      const step = event.key === 'ArrowDown' ? 1 : -1
+      const nextIndex = (options.indexOf(form[key]) + step + size) % size
+      update(key, options[nextIndex])
+
+      // 焦點要跟著選取移動。roving tabindex 的規則是「只有選中的那顆
+      // tabIndex=0」，如果焦點留在舊的那顆，它就變成一個 tabIndex=-1
+      // 卻還有焦點框的按鈕 —— 看起來像壞掉。
+      const group = event.currentTarget.closest('[role="radiogroup"]')
+      group?.querySelectorAll('[role="radio"]')[nextIndex]?.focus()
     }
   }
+
+  const handleSideKeyDown = arrowSelect(['buy', 'sell'], 'side', qtyRef)
+  const handleAccountKeyDown = arrowSelect(ACCOUNTS, 'account', null)
 
   async function submit(event) {
     event.preventDefault()
@@ -195,11 +215,20 @@ export default function TradeForm({ onSubmit, submitting }) {
 
   return (
     <form onSubmit={submit} className="grid gap-4 rounded-md border border-line bg-surface p-3 sm:p-4">
-      <div className="grid grid-cols-10 gap-2 sm:grid-cols-[2fr_2fr_1fr] sm:gap-3">
+      <div
+        className="grid grid-cols-10 gap-2 sm:grid-cols-[2fr_2fr_1fr] sm:gap-3"
+        role="radiogroup"
+        aria-label="帳戶"
+        data-page-keys="off"
+      >
         {ACCOUNTS.map((account, index) => (
           <button
             key={account}
             type="button"
+            role="radio"
+            aria-checked={form.account === account}
+            tabIndex={form.account === account ? 0 : -1}
+            onKeyDown={handleAccountKeyDown}
             onClick={() => update('account', account)}
             className={`rounded-md border py-2 text-sm transition hover:-translate-y-0.5 hover:border-sky-400/70 hover:bg-sky-500/10 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400/70 active:scale-[0.98] sm:col-span-1 sm:px-3 ${
               index === 2 ? 'col-span-2 px-1 text-xs font-medium sm:text-xs' : 'col-span-4 px-2 font-medium'
@@ -247,10 +276,10 @@ export default function TradeForm({ onSubmit, submitting }) {
         <div className="grid gap-2 text-sm">
           <span className="flex items-center gap-2">
             買賣
-            <span className="hidden text-[10px] text-slate-600 sm:inline">← → 切換</span>
+            <span className="hidden text-[10px] text-slate-600 sm:inline">↑ ↓ 切換</span>
           </span>
-          {/* roving tabindex：只有選中的那顆進 tab 順序，←→ 切換選擇 */}
-          <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="買賣">
+          {/* roving tabindex：只有選中的那顆進 tab 順序，↑↓ 切換選擇 */}
+          <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="買賣" data-page-keys="off">
             {[
               ['buy', '買入'],
               ['sell', '賣出'],

@@ -156,8 +156,21 @@ async def fetch_prices_batch(
     refresh: bool = False,
     fugle_key: str = "",
     context: PriceContext | None = None,
+    fetch_missing: bool = False,
 ) -> dict[str, float | None]:
-    """回傳 {ticker: price}。refresh=False 時只讀資料庫快取，不打外部 API。"""
+    """回傳 {ticker: price}。refresh=False 時只讀資料庫快取，不打外部 API。
+
+    fetch_missing=True 時有一個例外：**完全沒有快取列的標的仍然會去抓。**
+
+    為什麼要有這個例外：
+      「快取有點舊」和「根本沒有價格」是兩件事。
+      前者只是數字晚幾分鐘，後者會讓市值被當成 0 ——
+      新買一檔沒持有過的股票之後，持倉頁顯示不出現價，
+      帳戶總額直接少掉那筆的市值，首頁現金條的比例也跟著錯。
+      要等下一次排程才會對。
+
+      這是有界的：一個標的只會發生一次，抓過就進 price_cache 了。
+    """
     context = context or PriceContext()
     unique = sorted({t.strip().upper() for t in tickers if t and t.strip()})
     if not unique:
@@ -180,11 +193,16 @@ async def fetch_prices_batch(
         row = context.db_cache.get(symbol)
         row_price = float(row["price"]) if row and row.get("price") is not None else None
 
-        if row and (not refresh or _is_fresh(row.get("fetched_at"), _price_ttl())):
+        has_price = row is not None and row.get("price") is not None
+        # 上次補抓失敗會留下一列 price=null，用它的時間做退避，
+        # 免得抓不到的標的（下市、代號打錯）每次重建都再打一次外部 API
+        recently_tried = row is not None and _is_fresh(row.get("fetched_at"), _price_ttl())
+
+        if has_price and (not refresh or _is_fresh(row.get("fetched_at"), _price_ttl())):
             results[ticker] = row_price
             context.prices[symbol] = row_price
             context.stats["cached"] += 1
-        elif refresh:
+        elif refresh or (fetch_missing and not has_price and not recently_tried):
             to_fetch.append(ticker)
         else:
             results[ticker] = None
@@ -214,6 +232,13 @@ async def fetch_prices_batch(
             context.stats["failed"] += 1
             stale = context.db_cache.get(symbol)
             results[ticker] = float(stale["price"]) if stale and stale.get("price") is not None else None
+            if stale is None:
+                # 留一筆「試過了、抓不到」的紀錄當退避標記
+                rows.append({
+                    "symbol": symbol, "ticker": ticker, "account": account,
+                    "price": None, "currency": currency,
+                    "fetched_at": _now_iso(), "source": provider,
+                })
             continue
 
         results[ticker] = price

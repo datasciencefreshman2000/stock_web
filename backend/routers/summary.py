@@ -139,6 +139,8 @@ async def calculate_summary(refresh_prices: bool = False, collect: dict | None =
                 refresh=refresh_prices,
                 fugle_key=settings.fugle_api_key,
                 context=context,
+                # 剛買進、從未抓過價的標的一定要補抓，否則市值算成 0
+                fetch_missing=True,
             )
             if provider_ready
             else {}
