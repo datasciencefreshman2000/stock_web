@@ -234,7 +234,8 @@ export default function Dashboard() {
       </section>
 
       {/* 帳戶現金比例 */}
-      <CashRatioSection ownAccounts={ownAccounts} hideAmounts={hideAmounts} />
+      {/* 三個帳戶都列出來，爸媽美股會標「代管」 */}
+      <CashRatioSection accounts={accounts} hideAmounts={hideAmounts} />
 
       {investmentDetails.length ? (
         <section className="rounded-md border border-line bg-surface">

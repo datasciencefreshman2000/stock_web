@@ -1,6 +1,7 @@
 import { BarChart3, History, LayoutDashboard, PlusCircle, Wallet } from 'lucide-react'
 import { useCallback, useEffect, useRef } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { useSwipeNavigation } from '../hooks/useSwipeNavigation'
 import { preloadRoute } from '../routeLoaders'
 
 const items = [
@@ -40,7 +41,6 @@ function shouldIgnorePageKey(event) {
 export default function NavBar() {
   const location = useLocation()
   const navigate = useNavigate()
-  const touchRef = useRef({ startX: 0, startY: 0, handled: false })
   const ignoreClickRef = useRef(false)
   const currentIndex = pageIndex(location.pathname)
 
@@ -67,41 +67,19 @@ export default function NavBar() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [moveOnePage])
 
-  function onTouchStart(event) {
-    if (event.touches.length !== 1) return
-    const touch = event.touches[0]
-    touchRef.current = { startX: touch.clientX, startY: touch.clientY, handled: false }
-  }
-
-  function onTouchMove(event) {
-    const gesture = touchRef.current
-    if (gesture.handled || event.touches.length !== 1) return
-    const touch = event.touches[0]
-    const deltaX = touch.clientX - gesture.startX
-    const deltaY = touch.clientY - gesture.startY
-    if (Math.abs(deltaX) < 42 || Math.abs(deltaX) < Math.abs(deltaY) * 1.25) return
-
-    gesture.handled = true
+  // 整頁都能左右滑，不再只限於導覽列那條窄長的區域
+  useSwipeNavigation((step) => {
     ignoreClickRef.current = true
-    event.preventDefault()
-    moveOnePage(deltaX < 0 ? 1 : -1, 'swipe')
-  }
-
-  function onTouchEnd() {
-    touchRef.current.handled = false
     window.setTimeout(() => {
       ignoreClickRef.current = false
     }, 250)
-  }
+    moveOnePage(step, 'swipe')
+  })
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-40 overflow-hidden border-t border-line bg-[#0d1426]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur [touch-action:pan-y]"
+      className="fixed inset-x-0 bottom-0 z-40 overflow-hidden border-t border-line bg-[#0d1426]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur"
       aria-label="主要頁面"
-      onTouchStart={onTouchStart}
-      onTouchMove={onTouchMove}
-      onTouchEnd={onTouchEnd}
-      onTouchCancel={onTouchEnd}
       onClickCapture={(event) => {
         if (ignoreClickRef.current) event.preventDefault()
       }}
