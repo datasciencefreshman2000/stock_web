@@ -1,6 +1,6 @@
 """日線 OHLCV。技術分析與回測的資料基礎。"""
 
-from database import get_supabase
+from database import fetch_all, get_supabase
 
 CHUNK_SIZE = 500
 
@@ -11,15 +11,18 @@ def list_price_history(
     end_date: str | None = None,
     limit: int | None = None,
 ) -> list[dict]:
-    query = get_supabase().table("price_history").select("*").eq("symbol", symbol)
-    if start_date:
-        query = query.gte("date", start_date)
-    if end_date:
-        query = query.lte("date", end_date)
-    query = query.order("date")
+    def build():
+        query = get_supabase().table("price_history").select("*").eq("symbol", symbol)
+        if start_date:
+            query = query.gte("date", start_date)
+        if end_date:
+            query = query.lte("date", end_date)
+        return query.order("date")
+
     if limit:
-        query = query.limit(limit)
-    return query.execute().data or []
+        return build().limit(limit).execute().data or []
+    # 一檔十幾年的日線就有三千多列，遠超過 PostgREST 的 1000 列上限
+    return fetch_all(build)
 
 
 def latest_history_date(symbol: str) -> str | None:

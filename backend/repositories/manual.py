@@ -1,4 +1,4 @@
-from database import get_supabase
+from database import fetch_all, get_supabase
 
 
 MANUAL_INVESTMENTS_MISSING = "manual_investments table is missing. Run backend/sql/migrations/20260511_manual_investments.sql in Supabase SQL Editor."
@@ -213,8 +213,8 @@ def delete_manual_investment(investment_id: str) -> None:
 
 
 def list_capital_movements(start_date: str, end_date: str) -> list[dict]:
-    try:
-        response = (
+    def build():
+        return (
             get_supabase()
             .table("capital_movements")
             .select("*")
@@ -222,9 +222,11 @@ def list_capital_movements(start_date: str, end_date: str) -> list[dict]:
             .lt("movement_date", end_date)
             .order("movement_date", desc=True)
             .order("created_at", desc=True)
-            .execute()
         )
-        return response.data or []
+
+    try:
+        # 記帳是每天好幾筆的東西，一年就可能破千列
+        return fetch_all(build)
     except Exception:
         return []
 

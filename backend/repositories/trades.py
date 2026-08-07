@@ -1,4 +1,4 @@
-from database import get_supabase
+from database import fetch_all, get_supabase
 from services.accounts import ACCOUNTS
 
 X_ACCOUNT_ALIASES = ["x", "X", "x配置(台股)", "X配置(台股)", "x台股", "X台股"]
@@ -26,31 +26,45 @@ def list_trades(
     start_date: str | None = None,
     end_date: str | None = None,
 ) -> list[dict]:
-    query = get_supabase().table("trades").select("*")
-    if account:
-        accounts = account_filter_values(account)
-        query = query.in_("account", accounts) if len(accounts) > 1 else query.eq("account", accounts[0])
-    if ticker:
-        query = query.eq("ticker", ticker.upper())
-    if start_date:
-        query = query.gte("date", start_date)
-    if end_date:
-        query = query.lte("date", end_date)
-    response = query.order("date").order("created_at").execute()
-    rows = response.data or []
+    def build():
+        query = get_supabase().table("trades").select("*")
+        if account:
+            accounts = account_filter_values(account)
+            query = query.in_("account", accounts) if len(accounts) > 1 else query.eq("account", accounts[0])
+        if ticker:
+            query = query.eq("ticker", ticker.upper())
+        if start_date:
+            query = query.gte("date", start_date)
+        if end_date:
+            query = query.lte("date", end_date)
+        return query.order("date").order("created_at")
+
+    # ⚠ 一定要走 fetch_all。PostgREST 預設只回 1000 列且不報錯，
+    #   而排序是由舊到新，被截掉的會是最新的交易 —— FIFO 會少算。
+    rows = fetch_all(build)
     for row in rows:
         if row.get("ticker"):
             row["ticker"] = row["ticker"].strip().upper()
+        # 帳戶也要去空白。calculate_summary 是用
+        #   `if trade.get("account") in trades_by_account` 分組，
+        # 名稱多一個空白就對不上，那筆交易會被**靜默丟掉** ——
+        # 在「紀錄」看得到，「持倉」與「總覽」卻完全不算它。
+        if isinstance(row.get("account"), str):
+            row["account"] = row["account"].strip()
     return rows
 
 
 def list_trade_tickers(account: str) -> list[str]:
     """只讀取代號欄位，供新增交易的 datalist 使用。"""
     accounts = account_filter_values(account)
-    query = get_supabase().table("trades").select("ticker")
-    query = query.in_("account", accounts) if len(accounts) > 1 else query.eq("account", accounts[0])
-    response = query.order("ticker").execute()
-    return sorted({str(row.get("ticker") or "").strip().upper() for row in response.data or [] if row.get("ticker")})
+
+    def build():
+        query = get_supabase().table("trades").select("ticker")
+        return (query.in_("account", accounts) if len(accounts) > 1
+                else query.eq("account", accounts[0])).order("ticker")
+
+    rows = fetch_all(build)
+    return sorted({str(row.get("ticker") or "").strip().upper() for row in rows if row.get("ticker")})
 
 
 def get_trade(trade_id: str) -> dict | None:
