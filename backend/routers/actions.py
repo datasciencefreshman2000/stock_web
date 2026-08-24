@@ -11,9 +11,10 @@ from models import CorporateActionCreate
 from repositories.corporate_actions import (
     create_corporate_action,
     delete_corporate_action,
+    get_corporate_action,
     list_corporate_actions,
 )
-from repositories.fifo_checkpoints import invalidate_from
+from repositories.fifo_checkpoints import clear_checkpoints, invalidate_from
 from repositories.summary_cache import clear_summary_cache
 from repositories.trades import list_trades
 from services.accounts import ACCOUNTS
@@ -51,10 +52,27 @@ def add_action(payload: CorporateActionCreate) -> dict:
 
 @router.delete("/{action_id}")
 def remove_action(action_id: str) -> dict:
+    """刪除事件之前一定要先讀出它，才知道要作廢哪些 checkpoint。
+
+    ⚠ 這裡曾經只呼叫 clear_summary_cache() 就結束，那是錯的：
+
+      clear_summary_cache() 清的是**彙總快取**，不是 FIFO checkpoint。
+      而 _resume_point 只用 trade_count 判斷 checkpoint 可不可信 ——
+      刪掉一筆分割事件並不會改變 trade_count，
+      所以那個「已經套用過分割」的狀態會被一直沿用下去。
+
+      實測：登記 2:1 分割 → 100 股變 200 股 → 刪掉事件後仍然是 200 股。
+      永久性的錯誤，而且不會有任何提示。
+    """
+    action = get_corporate_action(action_id)
     delete_corporate_action(action_id)
-    # 不知道被刪的是哪個標的，保守起見清掉彙總快取；
-    # checkpoint 由下一次結算重建。
-    clear_summary_cache()
+
+    if action and action.get("symbol") and action.get("ex_date"):
+        _invalidate_for_symbol(str(action["symbol"]), str(action["ex_date"]))
+    else:
+        # 讀不到就把全部 checkpoint 清掉重算。慢，但至少是對的。
+        clear_checkpoints()
+        clear_summary_cache()
     return {"success": True}
 
 

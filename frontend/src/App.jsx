@@ -1,6 +1,7 @@
 import { Suspense, lazy } from 'react'
 import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom'
 
+import ErrorBoundary from './components/ErrorBoundary'
 import NavBar from './components/NavBar'
 import PrivacyToggle from './components/PrivacyToggle'
 import { LoadingBlock } from './components/StateBlock'
@@ -107,8 +108,10 @@ function AuthedApp() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AuthedApp />
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <AuthedApp />
+      </AuthProvider>
+    </ErrorBoundary>
   )
 }

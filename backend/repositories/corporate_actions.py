@@ -32,5 +32,18 @@ def create_corporate_action(payload: dict) -> dict:
     return response.data[0] if response.data else payload
 
 
+def get_corporate_action(action_id: str) -> dict | None:
+    response = (
+        get_supabase()
+        .table("corporate_actions")
+        .select("*")
+        .eq("id", action_id)
+        .limit(1)
+        .execute()
+    )
+    rows = response.data or []
+    return rows[0] if rows else None
+
+
 def delete_corporate_action(action_id: str) -> None:
     get_supabase().table("corporate_actions").delete().eq("id", action_id).execute()

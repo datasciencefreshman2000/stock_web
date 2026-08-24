@@ -4,25 +4,32 @@
 之後只需要套用 date > as_of_date 的交易，不必每次重跑全部歷史。
 """
 
-from database import get_supabase
+from database import fetch_all, get_supabase
 
 # 保留策略：月底 checkpoint 永久保留，其餘只留最新幾筆
 KEEP_RECENT = 2
 
 
 def list_latest_checkpoints(account: str, on_or_before: str) -> dict[str, dict]:
-    """取得該帳戶每個 ticker 在 on_or_before 之前最新的一筆 checkpoint。"""
-    response = (
-        get_supabase()
-        .table("fifo_checkpoints")
-        .select("*")
-        .eq("account", account)
-        .lte("as_of_date", on_or_before)
-        .order("as_of_date", desc=True)
-        .execute()
-    )
+    """取得該帳戶每個 ticker 在 on_or_before 之前最新的一筆 checkpoint。
+
+    要分頁：月底 checkpoint 是永久保留的，
+    120 個標的 × 每年 12 個月底，一年就一千多列。
+    被截斷的話某些標的會拿不到 checkpoint，退回全量重算——
+    結果仍然正確，但增量結算就形同失效了。
+    """
+    def build():
+        return (
+            get_supabase()
+            .table("fifo_checkpoints")
+            .select("*")
+            .eq("account", account)
+            .lte("as_of_date", on_or_before)
+            .order("as_of_date", desc=True)
+        )
+
     latest: dict[str, dict] = {}
-    for row in response.data or []:
+    for row in fetch_all(build):
         # 已依 as_of_date 由新到舊排序，第一次看到的就是最新
         latest.setdefault(row["ticker"], row)
     return latest
@@ -34,17 +41,19 @@ def list_latest_checkpoints_for_accounts(
     """一次取得多個帳戶的最新 checkpoint，避免逐帳戶查詢。"""
     if not accounts:
         return {}
-    response = (
-        get_supabase()
-        .table("fifo_checkpoints")
-        .select("*")
-        .in_("account", accounts)
-        .lte("as_of_date", on_or_before)
-        .order("as_of_date", desc=True)
-        .execute()
-    )
+
+    def build():
+        return (
+            get_supabase()
+            .table("fifo_checkpoints")
+            .select("*")
+            .in_("account", accounts)
+            .lte("as_of_date", on_or_before)
+            .order("as_of_date", desc=True)
+        )
+
     latest: dict[str, dict[str, dict]] = {account: {} for account in accounts}
-    for row in response.data or []:
+    for row in fetch_all(build):        # 同上，這裡是三個帳戶合計，更容易破千
         account = row.get("account")
         ticker = row.get("ticker")
         if account in latest and ticker:
