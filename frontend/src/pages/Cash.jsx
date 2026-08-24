@@ -347,6 +347,7 @@ export default function Cash() {
       <CapitalMovementPanel
         bankNames={bankNames}
         positiveBankNames={positiveBankNames}
+        usdRate={usdRate}
         onSaved={refreshMoneyNow}
         openSignal={ledgerSignal}
         openMode="expense"

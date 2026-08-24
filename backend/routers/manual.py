@@ -227,7 +227,13 @@ def apply_balance_deltas(deltas: dict[tuple[str, str, str], float], cash_rows: l
             if kind == "account":
                 key = invested_key(bucket)
                 old_value = values.get(key, 0)
-                new_value = max(old_value + delta, 0)
+                new_value = old_value + delta
+                if new_value < -0.0000001:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"{bucket} 的可調動金額不足，無法調出 {abs(delta):g} {currency}。",
+                    )
+                new_value = max(new_value, 0)
                 upsert_manual_value(key, new_value)
                 values[key] = new_value
             else:

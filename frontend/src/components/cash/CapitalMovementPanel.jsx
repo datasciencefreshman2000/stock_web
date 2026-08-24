@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronUp, Loader2, MessageSquareText } from 'lucide-react'
+import { ArrowRightLeft, ChevronDown, ChevronUp, Loader2, MessageSquareText } from 'lucide-react'
 
 import { api } from '../../api/client'
 import { useSaveQueue } from '../../hooks/useSaveQueue'
@@ -14,7 +14,7 @@ function unique(items) {
 }
 
 export default function CapitalMovementPanel({ bankNames, positiveBankNames, onSaved,
-                                               openSignal = 0, openMode = null }) {
+                                               openSignal = 0, openMode = null, usdRate = 31.316 }) {
   const sectionRef = useRef(null)
   const [panelOpen, setPanelOpen] = useState(false)
   const [attention, setAttention] = useState(false)
@@ -39,6 +39,7 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
     }
   }, [openSignal, openMode])
   const [exchange, setExchange] = useState(false)
+  const [toAmountManual, setToAmountManual] = useState(false)
   const [noteOpen, setNoteOpen] = useState(false)
   const [form, setForm] = useState({
     movement_date: today,
@@ -84,6 +85,20 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
     if (mode !== 'expense') setNoteOpen(false)
   }, [mode, expenseSources, incomeDestinations, transferBuckets, transferDestinations])
 
+  // 換匯的換入金額先用目前匯率估算；使用者一旦修改，就保留實際成交金額。
+  useEffect(() => {
+    if (!exchange || mode !== 'transfer' || toAmountManual) return
+    const amount = Number(form.amount)
+    const rate = Number(usdRate)
+    if (!Number.isFinite(amount) || amount <= 0 || !Number.isFinite(rate) || rate <= 0) return
+
+    let estimated = amount
+    if (form.currency === 'USD' && form.to_currency === 'TWD') estimated = amount * rate
+    if (form.currency === 'TWD' && form.to_currency === 'USD') estimated = amount / rate
+    const next = Number(estimated.toFixed(2)).toString()
+    setForm((current) => current.to_amount === next ? current : { ...current, to_amount: next })
+  }, [exchange, mode, form.amount, form.currency, form.to_currency, toAmountManual, usdRate])
+
   function update(key, value) {
     setForm((current) => ({ ...current, [key]: value }))
   }
@@ -116,6 +131,36 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
         expense_tags: [...current.expense_tags.filter((item) => item !== '其他'), tag],
       }
     })
+  }
+
+  function presetUsSaleExchange() {
+    setMode('transfer')
+    setExchange(true)
+    setToAmountManual(false)
+    setForm((current) => ({
+      ...current,
+      from_bucket: ACCOUNTS[1],
+      to_bucket: bankNames.includes('國泰現金') ? '國泰現金' : bankNames[0] || '',
+      currency: 'USD',
+      to_currency: 'TWD',
+    }))
+    setMessage('請輸入美股要換出的 USD 金額，以及入帳的 TWD 金額。')
+  }
+
+  function toggleExchange(enabled) {
+    setExchange(enabled)
+    setToAmountManual(false)
+    if (!enabled) update('to_amount', '')
+  }
+
+  function updateToCurrency(value) {
+    setToAmountManual(false)
+    update('to_currency', value)
+  }
+
+  function updateSourceCurrency(value) {
+    setToAmountManual(false)
+    update('currency', value)
   }
 
   function saveMovement() {
@@ -208,6 +253,27 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
           </div>
 
           <form onSubmit={submit} className="grid gap-3 px-3 pb-3 sm:grid-cols-2 lg:grid-cols-6 lg:items-end">
+            {mode === 'transfer' ? (
+              <div className="grid gap-2 rounded-md border border-sky-500/30 bg-sky-500/[0.06] p-3 text-xs text-slate-300 sm:col-span-2 lg:col-span-6">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="flex items-center gap-1.5 text-sky-100">
+                    <ArrowRightLeft size={14} />
+                    換匯會同時扣除來源幣別、增加目的地幣別
+                  </span>
+                  <button
+                    type="button"
+                    onClick={presetUsSaleExchange}
+                    className="rounded-md border border-sky-400/50 bg-sky-500/10 px-2.5 py-1.5 text-[11px] text-sky-100 transition hover:border-sky-300 hover:bg-sky-500/20 active:scale-[0.98]"
+                  >
+                    預設：美股 USD → 國泰 TWD
+                  </button>
+                </div>
+                <span className="text-[11px] text-slate-500">
+                  例如：來源選「美股」、目的地選「國泰現金」、勾選換匯，輸入 USD 金額與換得的 TWD 金額。
+                </span>
+              </div>
+            ) : null}
+
             <label className="grid gap-1 text-xs text-slate-400">
               日期
               <input className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm text-white" type="date" value={form.movement_date} onChange={(event) => update('movement_date', event.target.value)} />
@@ -296,7 +362,7 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
                 label={amountLabel}
                 subtitle={mode === 'expense' ? `從 ${form.from_bucket} 支出` : undefined}
                 currency={form.currency}
-                onCurrencyChange={(value) => update('currency', value)}
+                onCurrencyChange={updateSourceCurrency}
                 onComplete={mode === 'expense' ? saveMovement : undefined}
                 primaryLabel={mode === 'expense' ? '完成並儲存' : '完成'}
                 secondaryLabel={mode === 'expense' ? '完成並跳出' : undefined}
@@ -320,7 +386,7 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
 
             {mode === 'transfer' ? (
               <label className="flex items-center gap-2 rounded-md border border-line bg-panel px-3 py-2 text-xs text-slate-300">
-                <input className="min-h-0" type="checkbox" checked={exchange} onChange={(event) => setExchange(event.target.checked)} />
+                <input className="min-h-0" type="checkbox" checked={exchange} onChange={(event) => toggleExchange(event.target.checked)} />
                 換匯
               </label>
             ) : null}
@@ -331,16 +397,33 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
                   換入金額
                   <MobileNumericInput
                     value={form.to_amount}
-                    onChange={(value) => update('to_amount', normalizeAmount(value))}
+                    onChange={(value) => {
+                      setToAmountManual(true)
+                      update('to_amount', normalizeAmount(value))
+                    }}
                     label="換入金額"
                     currency={form.to_currency}
-                    onCurrencyChange={(value) => update('to_currency', value)}
+                    onCurrencyChange={updateToCurrency}
                     allowZero={false}
                   />
+                  <div className="flex items-center justify-between gap-2 text-[11px] text-slate-500">
+                    <span>
+                      {toAmountManual ? '已改為實際成交金額' : `依 USD/TWD ${Number(usdRate).toFixed(4)} 自動估算`}
+                    </span>
+                    {toAmountManual ? (
+                      <button
+                        type="button"
+                        onClick={() => setToAmountManual(false)}
+                        className="text-sky-300 transition hover:text-sky-100"
+                      >
+                        重新估算
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
                 <label className="hidden max-w-20 gap-1 text-[11px] text-slate-500 sm:grid">
                   換入幣別
-                  <select className="rounded-md border border-line bg-[#0b1020] px-2 py-1.5 text-xs text-white" value={form.to_currency} onChange={(event) => update('to_currency', event.target.value)}>
+                  <select className="rounded-md border border-line bg-[#0b1020] px-2 py-1.5 text-xs text-white" value={form.to_currency} onChange={(event) => updateToCurrency(event.target.value)}>
                     <option value="USD">USD</option>
                     <option value="TWD">TWD</option>
                   </select>
@@ -354,7 +437,7 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
                   value={form.amount}
                   onChange={(value) => update('amount', normalizeAmount(value))}
                   currency={form.currency}
-                  onCurrencyChange={(value) => update('currency', value)}
+                  onCurrencyChange={updateSourceCurrency}
                 />
               </div>
             ) : null}
