@@ -58,9 +58,9 @@ export default function CashBalanceChart({ data }) {
   return (
     <section className="overflow-hidden rounded-md border border-line bg-surface">
       <div className="border-b border-line bg-panel px-4 py-3">
-        <div className="text-sm font-medium text-slate-200">現金帳戶正負分布</div>
+        <div className="text-sm font-medium text-slate-200">現金、應收款與負債</div>
         <div className="mt-2 grid grid-cols-3 gap-3">
-          <Metric label="正資產" value={positive} tone="text-emerald-300" hidden={hideAmounts} />
+          <Metric label="現金與應收" value={positive} tone="text-emerald-300" hidden={hideAmounts} />
           <Metric label="負債" value={negative} tone="text-rose-300" hidden={hideAmounts} />
           <Metric label="現金淨額" value={net} tone="text-sky-200" hidden={hideAmounts} />
         </div>

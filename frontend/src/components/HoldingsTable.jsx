@@ -138,7 +138,7 @@ export default function HoldingsTable({ holdings, account, currency = 'TWD' }) {
           <thead className="border-b border-line bg-panel text-slate-300">
             <tr>
               {visibleColumns.map((column) => (
-                <th key={column.key} className={`sticky top-0 z-20 bg-panel px-4 py-3 ${column.align === 'left' ? '' : 'text-right'}`}>
+                <th aria-sort={sort.key === column.key ? (sort.direction === 'desc' ? 'descending' : 'ascending') : 'none'} key={column.key} className={`sticky top-0 z-20 bg-panel px-4 py-3 ${column.align === 'left' ? '' : 'text-right'}`}>
                   <button
                     type="button"
                     onClick={() => toggleSort(column.key)}
@@ -163,7 +163,7 @@ export default function HoldingsTable({ holdings, account, currency = 'TWD' }) {
                       {row.company_name ? <div className="text-xs text-slate-400">{row.company_name}</div> : null}
                     </button>
                   </td>
-                  {visibleColumns.some((column) => column.key === 'qty') ? <td className="px-4 py-3 text-right">{number(row.qty, 4)}</td> : null}
+                  {visibleColumns.some((column) => column.key === 'qty') ? <td className="px-4 py-3 text-right">{hideAmounts ? '••••' : number(row.qty, 4)}</td> : null}
                   {visibleColumns.some((column) => column.key === 'avg_price') ? <td className="px-4 py-3 text-right">{hideAmounts ? '••••' : number(row.avg_price, 2)}</td> : null}
                   {visibleColumns.some((column) => column.key === 'current_price') ? <td className="px-4 py-3 text-right">{hideAmounts ? '••••' : number(row.current_price, 2)}</td> : null}
                   {visibleColumns.some((column) => column.key === 'market_value') ? <td className="px-4 py-3 text-right">{hideAmounts ? maskAmount(money(row.market_value, currency)) : money(row.market_value, currency)}</td> : null}

@@ -75,6 +75,17 @@ def test_refresh_true_updates_everything(fake_provider):
     assert sorted(fake_provider) == ["2330", "2454"]
 
 
+def test_failed_refresh_keeps_quote_time_and_identifies_failed_symbol(fake_provider, monkeypatch):
+    monkeypatch.setattr(prices, '_fugle_price_sync', lambda ticker, key: None)
+    context = prices.PriceContext()
+    context.fx_row = {'rate':32, 'fetched_at':'2026-01-01T00:00:00+00:00'}
+    result = run(refresh=True, context=context)
+    status = prices.get_price_status(context)
+    assert result['2330'] == 1100
+    assert status['oldest_quote_at'] == '2000-01-01T00:00:00+00:00'
+    assert status['failed_symbols'] == ['TW:2330','TW:2454']
+
+
 def test_market_value_would_be_wrong_without_price():
     """把「沒有價格 → 市值算成 0」這件事釘住，說明為什麼上面那條重要。"""
     from services.calculator import build_holdings_from_results, summarize_account_from_results
@@ -86,7 +97,8 @@ def test_market_value_would_be_wrong_without_price():
     without = build_holdings_from_results(fifo, {"2454": None})
     with_price = build_holdings_from_results(fifo, {"2454": 1500.0})
 
-    assert summarize_account_from_results(fifo, without)["market_value"] == 0
+    assert summarize_account_from_results(fifo, without)["market_value"] is None
+    assert summarize_account_from_results(fifo, without)["valuation_complete"] is False
     assert summarize_account_from_results(fifo, with_price)["market_value"] == 1500000.0
 
 

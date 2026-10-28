@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 
 from services.constants import ETF_LIST, TW_ACCOUNTS
 from services.fees import calc_tw_fee, calc_tw_tax
+from services.dates import today
+from services.money import decimal, money_sum
 
 EPSILON = 1e-7
 SPLIT_ACTIONS = {"split", "reverse_split", "stock_dividend"}
@@ -153,18 +155,19 @@ def apply_trades(
         state.trade_count += 1
 
         if buy_qty > 0:
-            fee = calc_tw_fee(price, buy_qty) if is_tw else float(trade.get("fee") or 0)
+            fee = calc_tw_fee(price, buy_qty) if is_tw and not trade.get("fee") else float(trade.get("fee") or 0)
             state.total_fee += fee
             # 先沖銷「找不到對應買單的賣出」，剩下的才建立新的買入 lot
             matched_gap_qty = min(buy_qty, state.unmatched_sell_balance)
             state.unmatched_sell_balance -= matched_gap_qty
             long_qty = buy_qty - matched_gap_qty
             if long_qty > EPSILON:
-                state.lots.append(BuyLot(qty=long_qty, cost_per_share=price))
-                state.total_cost += long_qty * price
+                unit_cost = float(decimal(price) + decimal(fee) / decimal(buy_qty))
+                state.lots.append(BuyLot(qty=long_qty, cost_per_share=unit_cost))
+                state.total_cost = money_sum([state.total_cost, float(decimal(long_qty) * decimal(unit_cost))])
 
         if sell_qty > 0:
-            fee = calc_tw_fee(price, sell_qty) if is_tw else float(trade.get("fee") or 0)
+            fee = calc_tw_fee(price, sell_qty) if is_tw and not trade.get("fee") else float(trade.get("fee") or 0)
             tax = calc_tw_tax(price, sell_qty, ticker, is_etf=etf) if is_tw else 0
             remaining = sell_qty
             matched_qty = 0.0
@@ -226,5 +229,7 @@ def calc_fifo(
     is_etf: bool | None = None,
 ) -> dict:
     """從頭（或從 opening state）計算 FIFO，回傳彙總結果。"""
-    state = apply_trades(opening or FifoState(), trades, account, ticker, actions, is_etf)
+    cutoff = today()
+    state = apply_trades(opening or FifoState(), [t for t in trades if not t.get("date") or str(t["date"]) <= cutoff], account, ticker,
+                         [a for a in (actions or []) if str(a.get("ex_date") or "") <= cutoff], is_etf)
     return summarize_state(state)

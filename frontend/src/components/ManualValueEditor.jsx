@@ -2,6 +2,7 @@ import { RotateCcw, Save, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { api } from '../api/client'
+import { usePersistentState } from '../hooks/usePersistentState'
 import MobileNumericInput from './cash/MobileNumericInput'
 import { usePrivacy } from '../context/PrivacyContext'
 import { money, percent, pnlClass } from '../utils/format'
@@ -14,14 +15,14 @@ function hasOwn(object, key) {
 
 function parseAmount(value) {
   const parsed = Number(value)
-  return Number.isFinite(parsed) ? parsed : 0
+  return Number.isFinite(parsed) ? parsed : NaN
 }
 
 export default function ManualValueEditor({ investments = [], onSaved }) {
   const { hideAmounts } = usePrivacy()
   const [saving, setSaving] = useState('')
   const [error, setError] = useState('')
-  const [drafts, setDrafts] = useState({})
+  const [drafts, setDrafts] = usePersistentState('investments', {})
   const dirtyIds = useMemo(() => Object.keys(drafts), [drafts])
   const hasChanges = dirtyIds.length > 0
 
@@ -44,7 +45,7 @@ export default function ManualValueEditor({ investments = [], onSaved }) {
   function update(row, patch) {
     setDrafts((current) => ({
       ...current,
-      [row.id]: { ...(current[row.id] || {}), ...patch },
+      [row.id]: { expected_updated_at: row.updated_at, ...(current[row.id] || {}), ...patch, operation_id: crypto.randomUUID() },
     }))
   }
 
@@ -67,6 +68,8 @@ export default function ManualValueEditor({ investments = [], onSaved }) {
       numericPayload[key] = hasOwn(draft, key) ? parseAmount(draft[key]) : Number(row[key] || 0)
     })
     return {
+      operation_id: draft.operation_id,
+      expected_updated_at: draft.expected_updated_at ?? row.updated_at,
       name: draft.name ?? row.name,
       asset_type: draft.asset_type ?? row.asset_type,
       ...numericPayload,

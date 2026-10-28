@@ -1,5 +1,7 @@
 import { Suspense, lazy, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import ValuationNotice from '../components/ValuationNotice'
 
 // 圓餅圖背後是 recharts，體積不小。數字才是你進站要看的東西，
 // 圖表晚一點到沒關係 —— 分開載入可以讓上面的金額先出現。
@@ -22,12 +24,12 @@ import { formatStamp, freshnessClass, freshnessLabel } from '../utils/freshness'
 
 export default function Dashboard() {
   const [selectedInvestmentGroup, setSelectedInvestmentGroup] = useState(null)
-  const [summaryExpanded, setSummaryExpanded] = useState(false)
+  const [summaryExpanded, setSummaryExpanded] = useState(true)
   const { hideAmounts } = usePrivacy()
   const { data, error, isLoading: loading } = useSummaryQuery()
 
   // 刷新是同步的：等後端抓完價、重算完，快取失效後畫面自動重讀
-  const { refreshing: refreshInBackground, refreshNow } = useRefreshAll()
+  const { refreshing: refreshInBackground, refreshNow, error: refreshError } = useRefreshAll()
 
   const today = new Intl.DateTimeFormat('zh-TW', {
     year: 'numeric',
@@ -35,7 +37,7 @@ export default function Dashboard() {
     day: '2-digit',
     weekday: 'short',
   }).format(new Date())
-  const cachedAt = data?.summary_cached_at
+  const cachedAt = data?.price_status?.oldest_quote_at || data?.price_status?.finished_at
   const summaryTime = cachedAt ? formatStamp(cachedAt) : null
   const summaryAge = cachedAt ? freshnessLabel(cachedAt) : null
 
@@ -55,15 +57,15 @@ export default function Dashboard() {
   const investmentTotal = data.investment_total || 0
   const manualInvestmentCashTotal = data.manual_investment_cash_total || 0
   const investmentsByType = investments.reduce((acc, row) => {
-    const key = row.asset_type || '其他'
+    const key = ['台股','美股','其他'].includes(row.asset_type) ? row.asset_type : '其他'
     acc[key] = (acc[key] || 0) + investmentValueTwd(row)
     return acc
   }, {})
-  const ownCashTotal = data.cash?.twd_equivalent || 0
+  const ownCashTotal = data.cash?.own_twd_equivalent ?? data.cash?.twd_equivalent ?? 0
   const ownStockTotal = stockRows.reduce((sum, row) => sum + row.value, 0)
   const ownInvestmentTotal = ownStockTotal + investmentTotal
   const investmentCashTotal = manualInvestmentCashTotal + Object.values(ownAccounts).reduce(
-    (sum, row) => sum + Math.max(Number(row.inferred_cash_twd || 0), 0),
+    (sum, row) => sum + Number(row.inferred_cash_twd || 0),
     0,
   )
   const chartData = ['台股', '美股', '其他']
@@ -97,16 +99,16 @@ export default function Dashboard() {
   const investmentPnlTotal = investments.reduce((sum, row) => sum + investmentPnlTwd(row), 0)
   const investmentCostTotal = investments.reduce((sum, row) => sum + investmentCostTwd(row), 0)
   const totalRealized = Object.values(ownAccounts).reduce((sum, row) => sum + (row.realized_pnl_twd || 0), 0)
-  const totalUnrealized =
+  const totalUnrealized = data.valuation_complete === false ? null :
     Object.values(ownAccounts).reduce((sum, row) => sum + (row.unrealized_pnl_twd || 0), 0) + investmentPnlTotal
   const ownInvestedTotal =
-    Object.values(ownAccounts).reduce((sum, row) => sum + Number(row.invested_twd || row.cost_twd || 0), 0) +
+    Object.values(ownAccounts).reduce((sum, row) => sum + Number(row.invested_twd ?? row.cost_twd ?? 0), 0) +
     investmentCostTotal
-  const totalAssets = data.own_total_assets || data.total_assets
+  const totalAssets = data.valuation_complete === false ? null : (data.own_total_assets ?? data.total_assets)
   const summaryCards = [
     { key: 'total-assets', label: '總資產', value: money(totalAssets), countTo: totalAssets },
-    { key: 'investment-value', label: '投資市值', value: money(ownInvestmentTotal), countTo: ownInvestmentTotal },
-    { key: 'cash', label: '現金', value: money(ownCashTotal), countTo: ownCashTotal },
+    { key: 'investment-value', label: '投資市值', value: money(data.valuation_complete === false ? null : ownInvestmentTotal), countTo: data.valuation_complete === false ? null : ownInvestmentTotal },
+    { key: 'cash', label: '現金淨額（含應收／負債）', value: money(ownCashTotal), countTo: ownCashTotal },
     { key: 'investment-cash', label: '投資用現金', value: money(investmentCashTotal), countTo: investmentCashTotal },
   ]
   const toggleSummary = () => {
@@ -160,6 +162,7 @@ export default function Dashboard() {
           <button
             type="button"
             onClick={refreshNow}
+            aria-label="刷新股價"
             disabled={loading || refreshInBackground}
             className={`flex items-center gap-1.5 rounded-md border border-sky-500 bg-sky-500/15 px-3 py-2 text-sm font-medium text-sky-100 transition active:scale-[0.99] disabled:opacity-70 ${loading || refreshInBackground ? 'submit-pulse' : 'hover:bg-sky-500/20'}`}
           >
@@ -169,6 +172,8 @@ export default function Dashboard() {
         </div>
       </header>
 
+      {refreshError ? <ErrorBlock error={refreshError} onRetry={refreshNow} /> : null}
+      <ValuationNotice data={data} />
       {/* 摘要卡片：點擊可在總資產大卡與四格摘要間切換 */}
       <section>
         {!summaryExpanded ? (
@@ -188,7 +193,7 @@ export default function Dashboard() {
               type="button"
               onClick={toggleSummary}
               className="relative text-left transition active:scale-[0.99]"
-              aria-label="切換總資產摘要"
+              aria-label="收合資產摘要"
               aria-expanded={summaryExpanded}
             >
               <SummaryCard compact label={card.label} value={card.value} countTo={card.countTo} />
@@ -197,8 +202,8 @@ export default function Dashboard() {
         </div>
       </section>
 
-      {/* 圓餅圖：手機單張滑動 carousel，桌機 3 欄 grid */}
-      <section>
+      {/* 圓餅圖：估值不完整時暫停，避免顯示失真的百分比 */}
+      {data.valuation_complete !== false && investmentCashTotal >= 0 && ownCashTotal >= 0 ? <section>
         <Suspense fallback={<div className="h-64 animate-pulse rounded-md border border-line bg-panel/40" />}>
         {/* 手機 carousel */}
         <div className="scrollbar-hide flex snap-x snap-mandatory gap-3 overflow-x-auto pb-3 lg:hidden">
@@ -231,7 +236,7 @@ export default function Dashboard() {
           ))}
         </div>
         </Suspense>
-      </section>
+      </section> : null}
 
       {/* 帳戶現金比例 */}
       {/* 三個帳戶都列出來，爸媽美股會標「代管」 */}
@@ -258,13 +263,13 @@ export default function Dashboard() {
           <div className="border-b border-line bg-panel px-4 py-3 text-sm font-medium">各帳戶快速摘要</div>
           <div className="divide-y divide-line">
             {Object.entries(ownAccounts).map(([name, row]) => {
-              const pnl = Number(row.unrealized_pnl_twd || 0) + Number(row.realized_pnl_twd || 0)
-              const invested = Number(row.invested_twd || row.cost_twd || 0)
-              const roi = invested > 0 ? pnl / invested : null
+              const pnl = row.valuation_complete === false ? null : Number(row.unrealized_pnl_twd || 0) + Number(row.realized_pnl_twd || 0)
+              const invested = Number(row.invested_twd ?? row.cost_twd ?? 0)
+              const roi = pnl !== null && invested > 0 ? pnl / invested : null
               return (
                 <div key={name} className="grid grid-cols-[1fr_auto] gap-3 px-4 py-3">
                   <div>
-                    <div className="font-medium">{name}</div>
+                    <Link className="font-medium text-sky-100 underline underline-offset-4" to={`/holdings?account=${encodeURIComponent(name)}`}>{name} →</Link>
                     <div className="text-sm text-slate-400">投入 {hideAmounts ? maskAmount(money(invested)) : money(invested)}</div>
                   </div>
                   <div className="text-right">
@@ -311,7 +316,7 @@ export default function Dashboard() {
         <div className="grid gap-3 sm:grid-cols-2">
           <SummaryCard
             label="未實現損益"
-            value={`${money(totalUnrealized)} (${percent(ownInvestedTotal > 0 ? totalUnrealized / ownInvestedTotal : null)})`}
+            value={`${money(totalUnrealized)} (${percent(totalUnrealized !== null && ownInvestedTotal > 0 ? totalUnrealized / ownInvestedTotal : null)})`}
             accent={pnlClass(totalUnrealized)}
           />
           <SummaryCard
@@ -326,13 +331,13 @@ export default function Dashboard() {
         <div className="border-b border-line bg-panel px-4 py-3 text-sm font-medium">獨立管理帳戶</div>
         <div className="divide-y divide-line">
           {Object.entries(externalAccounts).map(([name, row]) => {
-            const pnl = Number(row.unrealized_pnl_twd || 0) + Number(row.realized_pnl_twd || 0)
-            const invested = Number(row.invested_twd || row.cost_twd || 0)
-            const roi = invested > 0 ? pnl / invested : null
+            const pnl = row.valuation_complete === false ? null : Number(row.unrealized_pnl_twd || 0) + Number(row.realized_pnl_twd || 0)
+            const invested = Number(row.invested_twd ?? row.cost_twd ?? 0)
+            const roi = pnl !== null && invested > 0 ? pnl / invested : null
             return (
               <div key={name} className="grid grid-cols-[1fr_auto] gap-3 px-4 py-3">
                 <div>
-                  <div className="font-medium">{name}</div>
+                  <Link className="font-medium text-sky-100 underline underline-offset-4" to={`/holdings?account=${encodeURIComponent(name)}`}>{name} →</Link>
                   <div className="text-sm text-slate-400">不列入我的總資產</div>
                 </div>
                 <div className="text-right">

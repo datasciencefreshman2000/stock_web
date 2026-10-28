@@ -58,7 +58,7 @@ def test_bulk_investment_update_patches_cache_once(monkeypatch):
         calls["cache"] += 1
         assert scope == "investment"
 
-    monkeypatch.setattr(manual, "update_manual_investments", fake_update)
+    monkeypatch.setattr(manual, "atomic_write", lambda action, payload: fake_update(payload["investments"]))
     monkeypatch.setattr(manual, "money_changed", fake_money_changed)
     payload = manual.ManualInvestmentBulkUpdate(investments=rows)
 
@@ -106,7 +106,7 @@ def test_rebuild_writes_all_caches_in_one_batch(monkeypatch):
             for account in jobs.ACCOUNTS
         }
         collect.update({"usd_rate": 30, "manual_rows": {}, "cash_rows": [], "context": None})
-        return {"accounts": {}, "usd_rate": 30}
+        return {"accounts": {}, "usd_rate": 30, "data_revision": 1}
 
     async def fake_names(tickers_by_account, fugle_key):
         return {account: {} for account in tickers_by_account}

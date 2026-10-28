@@ -11,4 +11,8 @@ dependencies = [
     "pydantic-settings==2.3.0",
     "python-dotenv==1.0.0",
     "fugle-marketdata==2.4.1",
+    "PyJWT==2.9.0",
 ]
+
+[project.optional-dependencies]
+test = ["pytest==8.3.3"]

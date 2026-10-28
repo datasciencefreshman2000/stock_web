@@ -1,5 +1,5 @@
 {
-  "buildCommand": "cd frontend && npm install && npm run build",
+  "buildCommand": "cd frontend && npm ci && npm run build",
   "outputDirectory": "frontend/dist",
   "rewrites": [
     {
@@ -13,7 +13,7 @@
   ],
   "functions": {
     "api/index.py": {
-      "excludeFiles": "{frontend/**,org_data/**,docs/**,.venv/**,venv/**,node_modules/**,**/__pycache__/**,**/*.log}"
+      "excludeFiles": "{frontend/**,org_data/**,docs/**,stock_research/**,tmp/**,supabase/**,.venv/**,venv/**,node_modules/**,**/__pycache__/**,**/*.log}"
     }
   }
 }

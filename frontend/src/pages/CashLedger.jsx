@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { ArrowLeft, ChevronLeft, ChevronRight, Edit3, Save, Trash2, X } from 'lucide-react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQueryClient, useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 
 import MobileNumericInput from '../components/cash/MobileNumericInput'
@@ -12,14 +12,12 @@ import { useCapitalMovementsQuery, useManualQuery } from '../hooks/queries'
 import { api } from '../api/client'
 import { queryKeys } from '../lib/queryClient'
 import { money } from '../utils/format'
+import { currentMonth } from '../utils/dates'
+import { useRememberedQueryObject } from '../hooks/useRememberedQueryObject'
+import { usePersistentState } from '../hooks/usePersistentState'
 
 function unique(items) {
   return [...new Set(items.filter(Boolean))]
-}
-
-function currentMonth() {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 }
 
 function shiftMonth(value, offset) {
@@ -57,6 +55,9 @@ function editFormFromMovement(row) {
   const type = movementType(row)
   const expense = type === 'expense' ? splitExpenseNote(row.note) : { tags: [], note: row.note || '' }
   return {
+    expected_updated_at: row.updated_at,
+    operation_id: crypto.randomUUID(),
+    affects_balance: row.affects_balance !== false,
     movement_date: row.movement_date || '',
     from_bucket: row.from_bucket || '',
     to_bucket: row.to_bucket || '',
@@ -76,6 +77,9 @@ function payloadFromForm(form) {
     ? [tags.join(', '), form.note.trim()].filter(Boolean).join(' - ')
     : form.note.trim()
   return {
+    expected_updated_at: form.expected_updated_at,
+    operation_id: form.operation_id,
+    affects_balance: form.affects_balance,
     movement_date: form.movement_date,
     from_bucket: form.from_bucket || null,
     to_bucket: form.to_bucket,
@@ -94,13 +98,18 @@ function displayNote(row) {
 
 export default function CashLedger() {
   const { hideAmounts } = usePrivacy()
-  const [month, setMonth] = useState(currentMonth)
+  const [search, setSearch] = useRememberedQueryObject('ledger-search', { month: currentMonth(), type: 'all' })
+  const selectedMonth = search.month
+  const setMonth = month => setSearch(current => ({ ...current, month }))
+  const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(selectedMonth) ? selectedMonth : currentMonth()
   const movementsQuery = useCapitalMovementsQuery(month)
+  const adjustmentsQuery = useQuery({ queryKey: ['balance-adjustments', month], queryFn: () => api.getBalanceAdjustments(month) })
   const manualQuery = useManualQuery()
   const queryClient = useQueryClient()
-  const [filter, setFilter] = useState('all')
-  const [editingId, setEditingId] = useState('')
-  const [form, setForm] = useState(null)
+  const filter = TYPE_LABELS[search.type] ? search.type : 'all'
+  const setFilter = type => setSearch(current => ({ ...current, type }))
+  const [editingId, setEditingId] = usePersistentState('ledger-edit-id', '')
+  const [form, setForm] = usePersistentState('ledger-edit', null)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
 
@@ -135,14 +144,14 @@ export default function CashLedger() {
   }
 
   function update(key, value) {
-    setForm((current) => ({ ...current, [key]: value }))
+    setForm((current) => ({ ...current, [key]: value, operation_id: crypto.randomUUID() }))
   }
 
   function toggleTag(tag) {
     setForm((current) => {
       const selected = current.tags.includes(tag)
       const tags = selected ? current.tags.filter((item) => item !== tag) : [...current.tags, tag]
-      return { ...current, tags: tags.length ? tags : ['其他'] }
+      return { ...current, operation_id: crypto.randomUUID(), tags: tags.length ? tags : ['其他'] }
     })
   }
 
@@ -163,6 +172,7 @@ export default function CashLedger() {
       }),
     }))
     markDependentDataStale()
+    void queryClient.invalidateQueries({ queryKey: ['capital-movements'], refetchType: 'none' })
   }
 
   function removeMovementFromCache(movementId) {
@@ -171,6 +181,7 @@ export default function CashLedger() {
       movements: (current?.movements || []).filter((row) => row.id !== movementId),
     }))
     markDependentDataStale()
+    void queryClient.invalidateQueries({ queryKey: ['capital-movements'], refetchType: 'none' })
   }
 
   async function save(event) {
@@ -187,7 +198,7 @@ export default function CashLedger() {
       replaceMovement(response.movement)
       setEditingId('')
       setForm(null)
-      setMessage('記帳紀錄與帳戶餘額已更新。')
+      setMessage(response.movement.balance_effect_note || '記帳紀錄與帳戶餘額已更新。')
     } catch (error) {
       setMessage(error.message || '更新失敗')
     } finally {
@@ -196,17 +207,17 @@ export default function CashLedger() {
   }
 
   async function remove(row) {
-    if (!window.confirm(`刪除 ${row.movement_date} 的這筆記帳紀錄？帳戶餘額也會一併沖回。`)) return
+    if (!window.confirm(`刪除 ${row.movement_date} 的這筆記帳紀錄？未經後續校正的餘額會一併沖回；只補歷史的紀錄不影響餘額。`)) return
     setSaving(true)
     setMessage('')
     try {
-      await api.deleteCapitalMovement(row.id)
+      const response = await api.deleteCapitalMovement(row.id)
       removeMovementFromCache(row.id)
       if (editingId === row.id) {
         setEditingId('')
         setForm(null)
       }
-      setMessage('記帳紀錄已刪除，帳戶餘額已沖回。')
+      setMessage(response.balance_effect_note || (row.affects_balance === false ? '歷史紀錄已刪除，餘額未變動。' : '記帳紀錄已刪除，帳戶餘額已沖回。'))
     } catch (error) {
       setMessage(error.message || '刪除失敗')
     } finally {
@@ -272,6 +283,17 @@ export default function CashLedger() {
           </button>
         ))}
       </div>
+
+      <details className="rounded border border-line bg-surface p-3 text-sm">
+        <summary className="cursor-pointer">餘額校正紀錄（{adjustmentsQuery.data?.adjustments?.length || 0} 筆）</summary>
+        <p className="mt-2 text-xs text-slate-400">後續校正已確認的餘額，修改校正前的舊紀錄時會保留。</p>
+        {adjustmentsQuery.error ? <ErrorBlock error={adjustmentsQuery.error} onRetry={adjustmentsQuery.refetch} /> : null}
+        {(adjustmentsQuery.data?.adjustments || []).map(row => <div key={row.id} className="mt-3 border-t border-line pt-2">
+          <span>{row.name} · {new Date(row.created_at).toLocaleString('zh-TW')}</span>
+          <div>{hideAmounts ? '•••• → ••••' : `${money(row.previous_value, row.currency)} → ${money(row.new_value, row.currency)}`}</div>
+          <div className="text-xs text-slate-400">{row.reason}</div>
+        </div>)}
+      </details>
 
       {message ? <div className={`rounded-md border px-4 py-3 text-sm ${message.includes('已') ? 'border-emerald-900/60 bg-emerald-950/30 text-emerald-200' : 'border-rose-900/60 bg-rose-950/30 text-rose-200'}`}>{message}</div> : null}
       {movementsQuery.isLoading ? <LoadingBlock label="正在讀取記帳紀錄" /> : null}
@@ -350,6 +372,7 @@ export default function CashLedger() {
                           ))}
                         </div>
                       ) : null}
+                      <label className="flex items-center gap-2 text-xs text-slate-400"><input type="checkbox" checked={form.affects_balance} onChange={event => update('affects_balance', event.target.checked)} />同步調整餘額（取消勾選只補歷史紀錄）</label>
                       <label className="grid gap-1 text-xs text-slate-400">
                         備註
                         <input className="rounded-md border border-line bg-[#0b1020] px-3 py-2 text-sm text-white" value={form.note} onChange={(event) => update('note', event.target.value)} />
@@ -372,13 +395,13 @@ export default function CashLedger() {
                           {details.tags.map((tag) => <span key={tag} className="rounded-full border border-sky-500/30 px-2 py-0.5 text-[10px] text-sky-200">{tag}</span>)}
                         </div>
                         <div className="mt-1 text-sm text-slate-200">
-                          {row.from_bucket ? `${row.from_bucket} → ` : ''}{row.to_bucket}
+                          {row.from_bucket ? `${row.from_bucket} → ` : ''}{row.to_bucket}{row.affects_balance === false ? '（僅歷史紀錄）' : ''}
                         </div>
                         {details.note ? <div className="mt-1 truncate text-xs text-slate-500">{details.note}</div> : null}
                       </div>
                       <div className="flex items-center gap-2">
                         <div className="text-right text-sm font-medium tabular-nums text-white">
-                          {hideAmounts ? maskAmount(money(row.amount, row.currency)) : money(row.amount, row.currency)}
+                          {hideAmounts ? maskAmount(money(row.amount, row.currency)) : money(row.amount, row.currency)}{row.to_currency && row.to_currency !== row.currency ? <div className="text-xs text-slate-400">→ {hideAmounts ? '••••' : money(row.to_amount, row.to_currency)}</div> : null}
                         </div>
                         <button type="button" onClick={() => startEdit(row)} disabled={saving} className="grid h-8 w-8 place-items-center rounded-md border border-line text-slate-400 hover:border-sky-500 hover:text-sky-200" aria-label="修改記帳紀錄" title="修改">
                           <Edit3 size={14} />

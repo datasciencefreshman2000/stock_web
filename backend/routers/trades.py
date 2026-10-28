@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from datetime import date as Date
 
 from config import get_settings
 from dependencies import require_auth
 from models import TradeCreate, TradeUpdate
+from repositories.operations import atomic_write
 from repositories.summary_cache import clear_summary_cache
 from repositories.tickers import list_tickers
 from repositories.trades import (
@@ -13,6 +15,7 @@ from repositories.trades import (
     list_trade_tickers,
     list_trades,
     update_trade,
+    list_trade_page,
 )
 from services.constants import TW_ACCOUNTS
 from services.fees import calc_tw_fee, calc_tw_tax
@@ -23,12 +26,13 @@ from services.symbols import symbol_for
 router = APIRouter()
 
 
-def prepare_trade_payload(payload: dict) -> dict:
+def prepare_trade_payload(payload: dict, is_etf: bool | None = None) -> dict:
+    payload["fee"] = payload.get("fee") if payload.get("fee") is not None else (None if payload["account"] in TW_ACCOUNTS else 0)
     qty = payload.get("buy_qty") or payload.get("sell_qty") or 0
     is_tw = payload["account"] in TW_ACCOUNTS
     if is_tw and not payload.get("fee"):
         payload["fee"] = calc_tw_fee(payload["price"], qty)
-    tax = calc_tw_tax(payload["price"], qty, payload["ticker"]) if is_tw and payload.get("sell_qty") else 0
+    tax = calc_tw_tax(payload["price"], qty, payload["ticker"], is_etf=is_etf) if is_tw and payload.get("sell_qty") else 0
     payload["total"] = (
         payload["price"] * qty + payload["fee"]
         if payload.get("buy_qty")
@@ -64,13 +68,17 @@ def get_trade_tickers(account: str, _: dict = Depends(require_auth)) -> dict:
 async def get_trades(
     account: str,
     ticker: str | None = Query(default=None),
-    start_date: str | None = Query(default=None),
-    end_date: str | None = Query(default=None),
+    start_date: Date | None = Query(default=None),
+    end_date: Date | None = Query(default=None),
+    cursor: str | None = Query(default=None, max_length=1000),
+    limit: int = Query(default=100, ge=1, le=200),
     _: dict = Depends(require_auth),
 ) -> dict:
-    trades = list_trades(account, ticker, start_date, end_date)
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(400, "起日不能晚於迄日。")
+    trades, next_cursor = list_trade_page(account, ticker, start_date.isoformat() if start_date else None, end_date.isoformat() if end_date else None, cursor, limit)
     if not trades:
-        return {"trades": [], "account": account}
+        return {"trades": [], "account": account, "next_cursor": None}
 
     # 公司名稱直接從 tickers 主檔讀，不再每次打 Fugle
     tw_symbols = sorted(
@@ -90,32 +98,27 @@ async def get_trades(
             name = (known.get(symbol) or {}).get("name") or name
         enriched.append({**row, "company_name": name})
 
-    return {"trades": enriched, "account": account, "combined": account == COMBINED_HISTORY_ACCOUNT}
+    return {"trades": enriched, "account": account, "combined": account == COMBINED_HISTORY_ACCOUNT, "next_cursor": next_cursor}
 
 
 @router.post("")
 def add_trade(trade: TradeCreate, _: dict = Depends(require_auth)) -> dict:
-    payload = prepare_trade_payload(trade.model_dump(mode="json"))
-    created = create_trade(payload)
-    after_trade_change(created)
+    known = list_tickers([symbol_for(trade.account, trade.ticker)]) if trade.account in TW_ACCOUNTS else {}
+    metadata = known.get(symbol_for(trade.account, trade.ticker)) or {}
+    payload = prepare_trade_payload(trade.model_dump(mode="json"), metadata.get("is_etf"))
+    created = atomic_write("trade.create", payload)
     return {"success": True, "trade": created}
 
 
 @router.patch("/{trade_id}")
 def patch_trade(trade_id: str, trade: TradeUpdate, _: dict = Depends(require_auth)) -> dict:
-    previous = get_trade(trade_id)
-    payload = prepare_trade_payload(trade.model_dump(mode="json"))
-    updated = update_trade(trade_id, payload)
-    # 舊值與新值都要作廢：日期或代號可能被改掉
-    after_trade_change(previous, updated)
+    known = list_tickers([symbol_for(trade.account, trade.ticker)]) if trade.account in TW_ACCOUNTS else {}
+    payload = prepare_trade_payload(trade.model_dump(mode="json"), (known.get(symbol_for(trade.account, trade.ticker)) or {}).get("is_etf"))
+    updated = atomic_write("trade.update", payload, record_id=trade_id)
     return {"success": True, "trade": updated}
 
 
 @router.delete("/{trade_id}")
-def remove_trade(trade_id: str, _: dict = Depends(require_auth)) -> dict:
-    previous = get_trade(trade_id)
-    if not previous:
-        raise HTTPException(status_code=404, detail="Trade not found.")
-    delete_trade(trade_id)
-    after_trade_change(previous)
+def remove_trade(trade_id: str, operation_id: str | None = None, _: dict = Depends(require_auth)) -> dict:
+    atomic_write("trade.delete", record_id=trade_id, operation_id=operation_id)
     return {"success": True}

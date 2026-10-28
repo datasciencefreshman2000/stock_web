@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { useRememberedQueryObject } from '../hooks/useRememberedQueryObject'
+import ValuationNotice from '../components/ValuationNotice'
 
 import AllocationBar from '../components/dashboard/AllocationBar'
 import HoldingsTable from '../components/HoldingsTable'
@@ -61,7 +63,10 @@ function StockCashBar({ stocks, cash, total, currency, hideAmounts }) {
 
 export default function Holdings() {
   const { hideAmounts } = usePrivacy()
-  const [tab, setTab] = useState(ACCOUNT_TABS[0])
+  const [search, setSearch] = useRememberedQueryObject('holdings-search', { account: ACCOUNT_TABS[0] })
+  const selectedTab = search.account
+  const setTab = account => setSearch({ account })
+  const tab = ACCOUNT_TABS.includes(selectedTab) ? selectedTab : ACCOUNT_TABS[0]
   const [metricsExpanded, setMetricsExpanded] = useState(false)
   const isManual = tab === ACCOUNT_TABS[3]
   const portfolioAccount = isManual ? ACCOUNT_TABS[0] : tab
@@ -71,18 +76,19 @@ export default function Holdings() {
   // 統一成舊有的 { data, error, loading, reload } 形狀，下面的畫面程式碼不用改
   const portfolio = { data: portfolioQuery.data, error: portfolioQuery.error, loading: portfolioQuery.isLoading, reload: portfolioQuery.refetch }
   const manual = { data: manualQuery.data, error: manualQuery.error, loading: manualQuery.isLoading, reload: manualQuery.refetch }
-  const { refreshing: portfolioRefreshInBackground, refreshNow } = useRefreshAll()
+  const { refreshing: portfolioRefreshInBackground, refreshNow, error: refreshError } = useRefreshAll()
   const invalidateMoney = useInvalidateMoney()
 
   const active = isManual ? manual : portfolio
   const currency = tab === ACCOUNT_TABS[1] || tab === ACCOUNT_TABS[2] ? 'USD' : 'TWD'
   const dashboard = portfolio.data?.dashboard || {}
   const accountInvested = Number(dashboard.invested ?? dashboard.cost ?? 0)
-  const totalPnl = Number(dashboard.unrealized_pnl || 0) + Number(dashboard.realized_pnl || 0)
+  const complete = dashboard.valuation_complete !== false
+  const totalPnl = complete ? Number(dashboard.unrealized_pnl || 0) + Number(dashboard.realized_pnl || 0) : null
   const inferredCash = Number(dashboard.inferred_cash ?? accountInvested - Number(dashboard.cost || 0) + Number(dashboard.realized_pnl || 0))
-  const accountTotalValue = Number(dashboard.account_total ?? Number(dashboard.market_value || 0) + inferredCash)
-  const pnlRatio = accountInvested > 0 ? totalPnl / accountInvested : null
-  const unrealizedRatio = accountInvested > 0 ? Number(dashboard.unrealized_pnl || 0) / accountInvested : null
+  const accountTotalValue = complete ? Number(dashboard.account_total ?? Number(dashboard.market_value || 0) + inferredCash) : null
+  const pnlRatio = complete && accountInvested > 0 ? totalPnl / accountInvested : null
+  const unrealizedRatio = complete && accountInvested > 0 ? Number(dashboard.unrealized_pnl || 0) / accountInvested : null
   const realizedRatio = accountInvested > 0 ? Number(dashboard.realized_pnl || 0) / accountInvested : null
   const stockValue = Math.max(Number(dashboard.market_value || 0), 0)
   const cashValue = Math.max(inferredCash, 0)
@@ -158,6 +164,7 @@ export default function Holdings() {
         {ACCOUNT_TABS.map((item) => (
           <button
             key={item}
+            aria-pressed={tab === item}
             onClick={() => setTab(item)}
             className={`shrink-0 rounded-md border px-3 py-2 text-sm transition-[background-color,border-color,color,box-shadow,transform] duration-200 ease-out hover:border-sky-400/60 hover:bg-sky-500/10 hover:text-white hover:shadow-[0_8px_20px_rgba(14,165,233,0.10)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400/70 active:scale-[0.98] sm:px-4 ${
               tab === item ? 'border-sky-400 bg-sky-500/15 text-white shadow-sm shadow-sky-950/40' : 'border-line bg-surface text-slate-300'
@@ -168,6 +175,10 @@ export default function Holdings() {
         ))}
       </div>
 
+      {refreshError ? <ErrorBlock error={refreshError} onRetry={refreshNow} /> : null}
+      <ValuationNotice data={dashboard} />
+      {dashboard.cash_warning ? <p role="alert" className="text-amber-200">{dashboard.cash_warning}</p> : null}
+      <p className="text-xs text-slate-400">損益含買賣費用，不含股利；報酬比例以淨入金為分母，入出金會改變比例，並非年化報酬。點指標可展開細項。</p>
       {active.loading ? <LoadingBlock label="正在讀取持倉資料" /> : null}
       {active.error ? <ErrorBlock error={active.error} /> : null}
 
@@ -190,7 +201,7 @@ export default function Holdings() {
                 />
               ))}
             </div>
-            <StockCashBar stocks={stockValue} cash={cashValue} total={allocationTotal} currency={currency} hideAmounts={hideAmounts} />
+            {complete && inferredCash >= 0 ? <StockCashBar stocks={stockValue} cash={cashValue} total={allocationTotal} currency={currency} hideAmounts={hideAmounts} /> : null}
             {detailMetricCards.length ? (
               <div className="summary-grid-enter grid grid-cols-2 gap-3">
                 {detailMetricCards.map((card) => (

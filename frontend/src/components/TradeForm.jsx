@@ -8,7 +8,8 @@ import { maskAmount, usePrivacy } from '../context/PrivacyContext'
 import { money } from '../utils/format'
 import { useTradeTickersQuery } from '../hooks/queries'
 
-const today = new Date().toISOString().slice(0, 10)
+import { taipeiDate } from '../utils/dates'
+import { usePersistentState } from '../hooks/usePersistentState'
 const EMPTY_TICKERS = []
 
 function estimateTwFee(price, qty) {
@@ -38,14 +39,14 @@ const initialForm = {
   side: 'buy',
   qty: '',
   price: '',
-  date: today,
+  date: taipeiDate(),
   fee: '',
   note: '',
 }
 
 export default function TradeForm({ onSubmit, submitting }) {
   const { hideAmounts } = usePrivacy()
-  const [form, setForm] = useState(initialForm)
+  const [form, setForm] = usePersistentState('trade', () => ({ ...initialForm, date: taipeiDate(), operation_id: crypto.randomUUID() }))
   const tickersQuery = useTradeTickersQuery(form.account)
   const [tickerHint, setTickerHint] = useState('')
   const [localError, setLocalError] = useState('')
@@ -128,7 +129,7 @@ export default function TradeForm({ onSubmit, submitting }) {
   }, [form.account, form.ticker, isTw])
 
   function update(key, value) {
-    setForm((current) => ({ ...current, [key]: value }))
+    setForm((current) => ({ ...current, [key]: value, operation_id: crypto.randomUUID() }))
   }
 
   function updateTicker(value) {
@@ -143,7 +144,7 @@ export default function TradeForm({ onSubmit, submitting }) {
         account = ACCOUNTS[0]
         setTickerHint(`看起來像台股代號，已自動切到 ${ACCOUNTS[0]}。`)
       }
-      return { ...current, ticker, account }
+      return { ...current, ticker, account, operation_id: crypto.randomUUID() }
     })
   }
 
@@ -195,18 +196,19 @@ export default function TradeForm({ onSubmit, submitting }) {
     setLocalError('')
 
     const payload = {
+      operation_id: form.operation_id,
       account: form.account,
       ticker: form.ticker.trim().toUpperCase(),
       date: form.date,
       buy_qty: form.side === 'buy' ? qty : null,
       sell_qty: form.side === 'sell' ? qty : null,
       price: Number(form.price),
-      fee: isTw ? 0 : Number(form.fee || 0),
+      fee: isTw ? null : Number(form.fee || 0),
       note: form.note,
     }
     const ok = await onSubmit(payload)
     if (ok) {
-      setForm((current) => ({ ...initialForm, account: current.account, date: current.date }))
+      setForm((current) => ({ ...initialForm, account: current.account, date: taipeiDate(), operation_id: crypto.randomUUID() }))
       setTickerHint('已新增，頁面保留在新增交易。')
       // 游標回到代號，可以直接打下一筆
       tickerRef.current?.focus()
@@ -365,9 +367,9 @@ export default function TradeForm({ onSubmit, submitting }) {
       </label>
 
       <div className="grid gap-2 rounded-md border border-line bg-panel p-3 text-xs text-slate-300 sm:grid-cols-3 sm:text-sm">
-        <div>手續費：{hideAmounts ? maskAmount(money(fee)) : money(fee)}</div>
-        <div>證交稅：{form.side === 'sell' ? (hideAmounts ? maskAmount(money(tax)) : money(tax)) : '--'}</div>
-        <div>交易總額：{hideAmounts ? maskAmount(money(total)) : money(total)}</div>
+        <div>手續費：{hideAmounts ? maskAmount(money(fee, isTw ? 'TWD' : 'USD')) : money(fee, isTw ? 'TWD' : 'USD')}</div>
+        <div>證交稅：{form.side === 'sell' ? (hideAmounts ? maskAmount(money(tax, isTw ? 'TWD' : 'USD')) : money(tax, isTw ? 'TWD' : 'USD')) : '--'}</div>
+        <div>交易總額：{hideAmounts ? maskAmount(money(total, isTw ? 'TWD' : 'USD')) : money(total, isTw ? 'TWD' : 'USD')}</div>
       </div>
 
       {localError ? (

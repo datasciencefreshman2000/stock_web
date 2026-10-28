@@ -2,8 +2,19 @@ from __future__ import annotations
 
 from datetime import date as Date
 from datetime import datetime
+from typing import Literal
+from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+Currency = Literal["TWD", "USD"]
+Account = Literal["台股", "美股", "爸媽美股"]
+
+
+class WriteRequest(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False, str_strip_whitespace=True)
+    operation_id: UUID = Field(default_factory=uuid4)
+    expected_updated_at: str | None = None
 
 
 class Trade(BaseModel):
@@ -20,14 +31,14 @@ class Trade(BaseModel):
     created_at: datetime | None = None
 
 
-class TradeCreate(BaseModel):
-    account: str
+class TradeCreate(WriteRequest):
+    account: Account
     ticker: str = Field(min_length=1)
     date: Date
-    buy_qty: float | None = None
-    sell_qty: float | None = None
+    buy_qty: float | None = Field(default=None, ge=0)
+    sell_qty: float | None = Field(default=None, ge=0)
     price: float = Field(gt=0)
-    fee: float = 0
+    fee: float | None = Field(default=None, ge=0)
     note: str = ""
 
     @model_validator(mode="after")
@@ -63,59 +74,87 @@ class Holding(BaseModel):
     weight: float | None = None
 
 
-class ManualValueUpdate(BaseModel):
+class ManualValueUpdate(WriteRequest):
     key: str = Field(min_length=1)
-    value: float = Field(ge=0)
+    value: float
+    reason: str = "校正投入金額"
 
 
-class CashUpdate(BaseModel):
+class CashUpdate(WriteRequest):
     amount: float
-    currency: str | None = None
+    currency: Currency | None = None
+    reason: str = "餘額校正"
 
 
-class CashCreate(BaseModel):
+class CashCreate(WriteRequest):
     name: str = Field(min_length=1)
     account: str = ""
     category: str = "現金"
-    currency: str = "USD"
+    currency: Currency = "TWD"
     amount: float = 0
 
 
-class ManualInvestmentCreate(BaseModel):
+class ManualInvestmentCreate(WriteRequest):
     name: str = Field(min_length=1)
     asset_type: str = "其他"
     cost: float = Field(ge=0)
     cash_amount: float = Field(default=0, ge=0)
     value: float = Field(ge=0)
-    currency: str = "TWD"
+    currency: Currency = "TWD"
 
 
-class ManualInvestmentUpdate(BaseModel):
+class ManualInvestmentUpdate(WriteRequest):
     name: str | None = None
     asset_type: str | None = None
     cost: float | None = Field(default=None, ge=0)
     cash_amount: float | None = Field(default=None, ge=0)
     value: float | None = Field(default=None, ge=0)
-    currency: str | None = None
+    currency: Currency | None = None
 
 
 class ManualInvestmentBulkItem(ManualInvestmentCreate):
+    # The containing bulk operation owns idempotency; don't generate a fresh ID
+    # for each item during request validation on every retry.
+    operation_id: UUID | None = None
     id: str = Field(min_length=1)
 
 
-class ManualInvestmentBulkUpdate(BaseModel):
+class ManualInvestmentBulkUpdate(WriteRequest):
     investments: list[ManualInvestmentBulkItem] = Field(min_length=1)
 
 
-class CapitalMovementCreate(BaseModel):
+class CapitalMovementCreate(WriteRequest):
     movement_date: Date
     from_bucket: str | None = None
     to_bucket: str = Field(min_length=1)
     amount: float = Field(gt=0)
-    currency: str = "TWD"
+    currency: Currency = "TWD"
     to_amount: float | None = Field(default=None, gt=0)
-    to_currency: str | None = None
+    to_currency: Currency | None = None
     note: str = ""
+    affects_balance: bool = True
+
+    @model_validator(mode="after")
+    def check_transfer(self):
+        from services.accounts import ACCOUNT_CURRENCY, BUCKET_ALIASES
+        self.from_bucket = BUCKET_ALIASES.get(self.from_bucket, self.from_bucket)
+        self.to_bucket = BUCKET_ALIASES.get(self.to_bucket, self.to_bucket)
+        source = ACCOUNT_CURRENCY.get(self.from_bucket)
+        target = ACCOUNT_CURRENCY.get(self.to_bucket)
+        if source and self.currency != source:
+            raise ValueError(f"{self.from_bucket} 換出幣別必須為 {source}")
+        destination_currency = self.to_currency or self.currency
+        if self.to_bucket == "支出" and not self.from_bucket:
+            raise ValueError("支出必須選擇付款帳戶")
+        if target and destination_currency != target:
+            raise ValueError(f"{self.to_bucket} 入帳幣別必須為 {target}，請填實際換入金額")
+        if destination_currency != self.currency and self.to_amount is None:
+            raise ValueError("跨幣別調動必須填寫實際換入金額")
+        if self.from_bucket == self.to_bucket and self.currency == destination_currency:
+            raise ValueError("來源與目的地不能是同一帳戶及幣別")
+        if destination_currency == self.currency and self.to_amount is not None and self.to_amount != self.amount:
+            raise ValueError("同幣別調動兩邊金額必須一致")
+        return self
 
 
 class CapitalMovementUpdate(CapitalMovementCreate):

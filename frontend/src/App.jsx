@@ -4,6 +4,8 @@ import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom'
 import ErrorBoundary from './components/ErrorBoundary'
 import NavBar from './components/NavBar'
 import PrivacyToggle from './components/PrivacyToggle'
+import SaveStatus from './components/SaveStatus'
+import { Link } from 'react-router-dom'
 import { LoadingBlock } from './components/StateBlock'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { PrivacyProvider } from './context/PrivacyContext'
@@ -50,6 +52,7 @@ function AnimatedRoutes() {
           <Route path="/cash/ledger" element={<CashLedger />} />
           <Route path="/add-trade" element={<AddTrade />} />
           <Route path="/history" element={<History />} />
+          <Route path="*" element={<div className="rounded border border-line p-5"><h1>找不到這個頁面</h1><Link className="text-sky-300 underline" to="/">返回總覽</Link></div>} />
         </Routes>
       </Suspense>
     </div>
@@ -96,6 +99,7 @@ function AuthedApp() {
         <div className="min-h-screen overflow-x-hidden bg-[#0b1020] text-slate-100">
           <SiteLogo />
           <main className="mx-auto w-full max-w-6xl px-3 pb-28 pt-4 sm:px-4 sm:pb-24 sm:pt-5">
+            <SaveStatus />
             <AnimatedRoutes />
           </main>
           <PrivacyToggle />

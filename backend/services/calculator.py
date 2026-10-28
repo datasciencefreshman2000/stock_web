@@ -1,6 +1,7 @@
 from repositories.fifo_checkpoints import list_latest_checkpoints
 from services.settlement import analyze_account, checkpoint_boundary, group_by_ticker, load_reference_data
 from services.symbols import symbol_for
+from services.money import money_sum
 
 
 def analyze_account_trades(
@@ -73,9 +74,10 @@ def build_holdings_from_results(
             }
         )
 
+    complete = all(item['market_value'] is not None for item in holdings)
     for holding in holdings:
         market_value = holding.get("market_value")
-        holding["weight"] = market_value / total_market_value if market_value and total_market_value > 0 else None
+        holding["weight"] = market_value / total_market_value if complete and market_value is not None and total_market_value > 0 else None
 
     holdings.sort(key=lambda item: item.get("market_value") or 0, reverse=True)
     return holdings
@@ -106,12 +108,17 @@ def summarize_account_from_results(fifo_results: dict[str, dict], holdings: list
         dividend_income += result.get("dividend_income", 0)
 
     cost = sum(item.get("cost") or 0 for item in holdings)
-    market_value = sum(item.get("market_value") or 0 for item in holdings)
+    missing = [item["ticker"] for item in holdings if item.get("market_value") is None]
+    known_value = money_sum(item.get("market_value") for item in holdings)
+    market_value = None if missing else known_value
     return {
         "cost": cost,
         "market_value": market_value,
         "realized_pnl": realized_pnl,
-        "unrealized_pnl": market_value - cost,
+        "unrealized_pnl": money_sum([market_value, -cost]) if market_value is not None else None,
+        "valuation_complete": not missing,
+        "missing_prices": missing,
+        "known_market_value": known_value,
         "total_fee": total_fee,
         "total_tax": total_tax,
         "dividend_income": dividend_income,

@@ -9,6 +9,7 @@ from dependencies import require_auth
 from repositories.manual import list_cash_accounts, list_manual_values
 from repositories.summary_cache import get_summary_cache, portfolio_cache_key, upsert_summary_cache
 from repositories.trades import list_trades
+from repositories.operations import get_data_revision
 from services.accounts import ACCOUNTS, cash_summary, enrich_account_summary, invested_key
 from services.calculator import (
     active_tickers,
@@ -34,6 +35,8 @@ async def calculate_portfolio(account: str, refresh_prices: bool = False) -> dic
     if account not in ACCOUNTS:
         raise HTTPException(status_code=404, detail="Unknown account.")
 
+    data_revision = get_data_revision()
+    calculation_started_at = datetime.now(timezone.utc).isoformat()
     settings = get_settings()
     context = PriceContext()
 
@@ -47,13 +50,11 @@ async def calculate_portfolio(account: str, refresh_prices: bool = False) -> dic
             tickers,
             account,
             settings.finnhub_key,
-            refresh=refresh_prices,
+            refresh=refresh_prices and provider_ready,
             fugle_key=settings.fugle_api_key,
             context=context,
-            fetch_missing=True,   # 同 summary：沒抓過價的標的要補抓
+            fetch_missing=provider_ready,
         )
-        if provider_ready
-        else {}
     )
     company_names = await resolve_company_names(account, tickers, settings.fugle_api_key)
 
@@ -68,6 +69,8 @@ async def calculate_portfolio(account: str, refresh_prices: bool = False) -> dic
 
     return {
         "account": account,
+        "data_revision": data_revision,
+        "calculation_started_at": calculation_started_at,
         "holdings": holdings,
         "dashboard": dashboard,
         "price_status": get_price_status(context),
@@ -112,6 +115,9 @@ async def refresh_portfolio_cache(
         if working and account in working.get("by_account", {})
         else await calculate_portfolio(account, refresh_prices=refresh_prices)
     )
+    if working:
+        portfolio['data_revision'] = working['data_revision']
+        portfolio['calculation_started_at'] = working['calculation_started_at']
     return upsert_summary_cache(portfolio, portfolio_cache_key(account))
 
 

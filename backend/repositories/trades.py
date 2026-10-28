@@ -1,9 +1,35 @@
 from database import fetch_all, get_supabase
 from services.accounts import ACCOUNTS
+import base64
+import json
+from datetime import date, datetime
+from uuid import UUID
+from fastapi import HTTPException
 
 X_ACCOUNT_ALIASES = ["x", "X", "x配置(台股)", "X配置(台股)", "x台股", "X台股"]
 COMBINED_HISTORY_ACCOUNT = "__combined__"
 COMBINED_HISTORY_ACCOUNTS = ACCOUNTS[:3]
+
+
+def list_trade_page(account: str, ticker=None, start_date=None, end_date=None, cursor=None, limit=100):
+    before = None
+    if account not in [*ACCOUNTS, COMBINED_HISTORY_ACCOUNT]:
+        raise HTTPException(404, "找不到帳戶。")
+    if cursor:
+        try:
+            before = json.loads(base64.urlsafe_b64decode(cursor.encode()))
+            date.fromisoformat(before['date']); datetime.fromisoformat(before['created_at'].replace('Z', '+00:00')); UUID(before['id'])
+        except (ValueError, KeyError, TypeError):
+            raise HTTPException(400, "分頁資訊已失效，請重新查詢。") from None
+    rows = get_supabase().rpc("list_app_trades_page", {"p_account": account, "p_ticker": ticker or None,
+        "p_start": start_date, "p_end": end_date, "p_before": before, "p_limit": limit}).execute().data or []
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    next_cursor = None
+    if has_more and rows:
+        last = rows[-1]
+        next_cursor = base64.urlsafe_b64encode(json.dumps({"date": last.get('date') or '0001-01-01', "created_at": last['created_at'], "id": last['id']}).encode()).decode()
+    return rows, next_cursor
 
 
 def normalize_account(account: str | None) -> str | None:
@@ -37,7 +63,7 @@ def list_trades(
             query = query.gte("date", start_date)
         if end_date:
             query = query.lte("date", end_date)
-        return query.order("date").order("created_at")
+        return query.order("date").order("created_at").order("id")
 
     # ⚠ 一定要走 fetch_all。PostgREST 預設只回 1000 列且不報錯，
     #   而排序是由舊到新，被截掉的會是最新的交易 —— FIFO 會少算。

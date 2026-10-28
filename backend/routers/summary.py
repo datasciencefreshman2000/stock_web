@@ -6,6 +6,7 @@ A3 修正：GET 端點一律只讀快取，不再用 BackgroundTasks 在回應�
 """
 
 from fastapi import APIRouter, Depends
+from datetime import datetime, timezone
 
 from config import get_settings
 from dependencies import require_auth
@@ -13,6 +14,7 @@ from repositories.fifo_checkpoints import list_latest_checkpoints_for_accounts
 from repositories.manual import list_cash_accounts, list_manual_investments, list_manual_values
 from repositories.summary_cache import get_summary_cache, upsert_summary_cache
 from repositories.trades import list_trades
+from repositories.operations import get_data_revision
 from services.accounts import (
     ACCOUNTS,
     EXTERNAL_ACCOUNTS,
@@ -80,6 +82,8 @@ async def calculate_summary(refresh_prices: bool = False, collect: dict | None =
     全部交易跑兩遍，還多花 21 次 DB 往返。
     """
     settings = get_settings()
+    data_revision = get_data_revision()
+    calculation_started_at = datetime.now(timezone.utc).isoformat()
     context = PriceContext()
     usd_rate = await fetch_usd_rate(refresh=refresh_prices, context=context)
 
@@ -136,14 +140,12 @@ async def calculate_summary(refresh_prices: bool = False, collect: dict | None =
                 tickers_by_account[account],
                 account,
                 settings.finnhub_key,
-                refresh=refresh_prices,
+                refresh=refresh_prices and provider_ready,
                 fugle_key=settings.fugle_api_key,
                 context=context,
-                # 剛買進、從未抓過價的標的一定要補抓，否則市值算成 0
-                fetch_missing=True,
+                # 缺少供應商金鑰時仍可沿用資料庫最後有效報價。
+                fetch_missing=provider_ready,
             )
-            if provider_ready
-            else {}
         )
         holdings = build_holdings_from_results(fifo_by_account[account], prices)
         summary = summarize_account_from_results(fifo_by_account[account], holdings)
@@ -156,9 +158,9 @@ async def calculate_summary(refresh_prices: bool = False, collect: dict | None =
                 "tickers": tickers_by_account[account],
             }
         if account in OWN_ACCOUNTS:
-            own_account_total += summary["account_total_twd"]
+            own_account_total += summary["account_total_twd"] or 0
         if account in EXTERNAL_ACCOUNTS:
-            external_account_total += summary["account_total_twd"]
+            external_account_total += summary["account_total_twd"] or 0
 
     manual = {
         "morgan_cost": manual_rows.get("morgan_cost", MANUAL_COSTS["morgan"]),
@@ -180,13 +182,20 @@ async def calculate_summary(refresh_prices: bool = False, collect: dict | None =
     own_cash_total = cash_summary(own_cash_rows, usd_rate)["twd_equivalent"]
     external_cash_total = sum(cash["by_account"][a]["twd_equivalent"] for a in EXTERNAL_ACCOUNTS)
 
-    own_total = own_account_total + investment_total + manual_investment_cash_total + own_cash_total
+    known_total = own_account_total + investment_total + manual_investment_cash_total + own_cash_total
+    own_complete = all(accounts[a].get("valuation_complete", True) for a in OWN_ACCOUNTS)
+    external_complete = all(accounts[a].get("valuation_complete", True) for a in EXTERNAL_ACCOUNTS)
+    own_total = known_total if own_complete else None
+    cash["own_twd_equivalent"] = own_cash_total
 
     if collect is not None:
         collect.update({"usd_rate": usd_rate, "manual_rows": manual_rows,
-                        "cash_rows": cash_rows, "context": context})
+                        "cash_rows": cash_rows, "context": context, "data_revision": data_revision,
+                        "calculation_started_at": calculation_started_at})
 
     return {
+        "data_revision": data_revision,
+        "calculation_started_at": calculation_started_at,
         "usd_rate": usd_rate,
         "accounts": accounts,
         "manual": manual,
@@ -197,7 +206,10 @@ async def calculate_summary(refresh_prices: bool = False, collect: dict | None =
         "cash": cash,
         "total_assets": own_total,
         "own_total_assets": own_total,
-        "external_total_assets": external_account_total + external_cash_total,
+        "external_total_assets": external_account_total + external_cash_total if external_complete else None,
+        "valuation_complete": own_complete,
+        "known_total_assets": known_total,
+        "missing_prices": [{"account": a, "ticker": t} for a in OWN_ACCOUNTS for t in accounts[a].get("missing_prices", [])],
         "price_status": get_price_status(context),
     }
 

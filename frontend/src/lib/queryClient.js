@@ -7,7 +7,7 @@ import { QueryClient } from '@tanstack/react-query'
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 5 * 60 * 1000,
+      staleTime: 60 * 1000,
       gcTime: 30 * 60 * 1000,
       // 從別的分頁 / 別的 App 切回來時重讀一次。
       // 成本是每次切回來 1 次 GET，而且後端直接命中快取（1 次 DB 往返），

@@ -2,6 +2,13 @@ import { useQueryClient } from '@tanstack/react-query'
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 
 import { api, auth } from '../api/client'
+import { saveQueue } from '../hooks/useSaveQueue'
+import { DRAFT_PREFIX } from '../hooks/usePersistentState'
+
+function clearLocalDrafts() {
+  saveQueue.clear()
+  try { Object.keys(localStorage).filter(key => key.startsWith(DRAFT_PREFIX)).forEach(key => localStorage.removeItem(key)) } catch { /* unavailable */ }
+}
 
 const AuthContext = createContext(null)
 
@@ -38,6 +45,8 @@ export function AuthProvider({ children }) {
   }, [])
 
   const logout = useCallback(() => {
+    if (saveQueue.getSnapshot().length && !window.confirm('仍有未確認的儲存項目。登出會清除本機草稿，確定登出？')) return
+    clearLocalDrafts()
     api.logout()
     queryClient.clear()
     setStatus('signed-out')

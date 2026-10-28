@@ -8,17 +8,18 @@ A3：這裡是系統中唯一負責「抓價 + 重算 + 寫快取」的地方。
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from config import get_settings
 from dependencies import require_auth_or_cron
 from repositories.job_runs import get_job_run, record_job_run
 from repositories.snapshots import normalize_snapshot_time, snapshot_taipei_parts, upsert_snapshots
-from repositories.summary_cache import SUMMARY_CACHE_KEY, portfolio_cache_key, upsert_summary_caches
+from repositories.summary_cache import SUMMARY_CACHE_KEY, portfolio_cache_key, upsert_summary_caches, CacheRevisionChanged
 from repositories.trades import latest_trade_change_at, list_trades
 from services.accounts import ACCOUNTS
 from services.prices import resolve_company_names_batch
 from services.settlement import checkpoint_boundary, settle_account, should_settle
+from repositories.operations import get_data_revision
 
 router = APIRouter()
 
@@ -26,6 +27,15 @@ SETTLE_JOB = "fifo_settle"
 
 
 async def rebuild_all_caches(refresh_prices: bool) -> dict:
+    for attempt in range(3):
+        try:
+            return await _build_all_caches_once(refresh_prices if attempt == 0 else False)
+        except CacheRevisionChanged:
+            continue
+    raise HTTPException(409, "帳務持續更新中，請稍後重新讀取。")
+
+
+async def _build_all_caches_once(refresh_prices: bool) -> dict:
     """把 summary 與三個帳戶的持倉快取一次全部重建。
 
     兩個重點：
@@ -59,6 +69,9 @@ async def rebuild_all_caches(refresh_prices: bool) -> dict:
         )
         for account in ACCOUNTS
     }
+    for payload in portfolios.values():
+        payload["data_revision"] = summary["data_revision"]
+        payload["calculation_started_at"] = summary.get("calculation_started_at")
     updated_at = upsert_summary_caches({
         SUMMARY_CACHE_KEY: summary,
         **{portfolio_cache_key(account): payload for account, payload in portfolios.items()},
@@ -91,6 +104,8 @@ async def refresh_all(_: dict = Depends(require_auth_or_cron)) -> dict:
     record_job_run("refresh", ok=True)
     return {
         "ok": True,
+        "degraded": not result["summary"].get("valuation_complete", True) or bool(result["summary"].get("price_status", {}).get("failed")),
+        "price_status": result["summary"].get("price_status"),
         "summary_cached_at": result["summary"].get("summary_cached_at"),
         "portfolios": result["portfolios"],
     }
@@ -101,6 +116,9 @@ async def snapshot_all(_: dict = Depends(require_auth_or_cron)) -> dict:
     try:
         result = await _refresh_all(refresh_prices=True)
         summary = result["summary"]
+        if not summary.get("valuation_complete", True):
+            record_job_run("snapshot", ok=False, error="估值不完整，已略過快照。")
+            return {"ok": False, "skipped": True, "reason": "估值不完整，保留上次有效快照。", "missing_prices": summary.get("missing_prices", [])}
         snapshot_at = normalize_snapshot_time(datetime.now(timezone.utc))
         snapshot_date_taipei, snapshot_hour_taipei = snapshot_taipei_parts(snapshot_at)
         rows = upsert_snapshots(summary, snapshot_at)
@@ -140,8 +158,9 @@ def settle_fifo(force: bool = False, _: dict = Depends(require_auth_or_cron)) ->
     as_of_date = checkpoint_boundary()
     written: dict[str, int] = {}
     try:
+        revision = get_data_revision()
         for account in ACCOUNTS:
-            written[account] = settle_account(account, list_trades(account), as_of_date)
+            written[account] = settle_account(account, list_trades(account), as_of_date, revision)
     except Exception as exc:
         record_job_run(SETTLE_JOB, ok=False, error=f"{type(exc).__name__}: {exc}")
         raise

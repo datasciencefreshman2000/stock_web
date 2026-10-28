@@ -3,7 +3,10 @@ import { ArrowRightLeft, ChevronDown, ChevronUp, Loader2, MessageSquareText } fr
 
 import { api } from '../../api/client'
 import { useSaveQueue } from '../../hooks/useSaveQueue'
-import { ACCOUNTS } from '../../constants'
+import { money } from '../../utils/format'
+import { ACCOUNTS, ACCOUNT_CURRENCY } from '../../constants'
+import { usePrivacy } from '../../context/PrivacyContext'
+import { usePersistentState } from '../../hooks/usePersistentState'
 import IncomeSourcePicker from './IncomeSourcePicker'
 import MobileNumericInput from './MobileNumericInput'
 import NumericKeypad from './NumericKeypad'
@@ -15,10 +18,11 @@ function unique(items) {
 
 export default function CapitalMovementPanel({ bankNames, positiveBankNames, onSaved,
                                                openSignal = 0, openMode = null, usdRate = 31.316 }) {
+  const { hideAmounts } = usePrivacy()
   const sectionRef = useRef(null)
   const [panelOpen, setPanelOpen] = useState(false)
   const [attention, setAttention] = useState(false)
-  const [mode, setMode] = useState('income')
+  const [mode, setMode] = usePersistentState('movement-mode', 'income')
 
   // 外部（例如現金頁的「記帳」按鈕）要求展開並切到指定模式。
   // 用遞增的 openSignal 當觸發，這樣連按也有效。
@@ -39,10 +43,10 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
     }
   }, [openSignal, openMode])
   const [exchange, setExchange] = useState(false)
-  const [toAmountManual, setToAmountManual] = useState(false)
+  const [toAmountManual, setToAmountManual] = usePersistentState('movement-manual-destination', false)
   const [noteOpen, setNoteOpen] = useState(false)
-  const [form, setForm] = useState({
-    movement_date: today,
+  const [form, setForm] = usePersistentState('movement', () => ({
+    movement_date: today(),
     income_source: INCOME_SOURCES[0],
     expense_tags: ['其他'],
     other_type: OTHER_TYPES[0],
@@ -53,15 +57,17 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
     to_amount: '',
     to_currency: 'USD',
     note: '',
-  })
+    operation_id: crypto.randomUUID(),
+    affects_balance: true,
+  }))
   const [message, setMessage] = useState('')
   // 送出不擋畫面：按下去就排隊，表單立刻清空可以打下一筆。
-  // 送出本身仍維持序列（餘額是讀-改-寫，並行會互相覆蓋）。
+  // 全站佇列依序送出；跨裝置的並行與重試另由資料庫交易保護。
   const queue = useSaveQueue(api.createCapitalMovement, () => onSaved?.())
   const saving = queue.pending > 0
 
-  const incomeDestinations = useMemo(() => unique([...bankNames, ON_HAND_CASH, ACCOUNTS[0]]), [bankNames])
-  const transferBuckets = useMemo(() => unique([...bankNames, ON_HAND_CASH, ACCOUNTS[0], ACCOUNTS[1]]), [bankNames])
+  const incomeDestinations = useMemo(() => unique([...bankNames, ON_HAND_CASH, ...ACCOUNTS]), [bankNames])
+  const transferBuckets = useMemo(() => unique([...bankNames, ON_HAND_CASH, ...ACCOUNTS]), [bankNames])
   const transferDestinations = useMemo(() => unique([...transferBuckets, CREDIT_CARD_DEBT]), [transferBuckets])
   const expenseSources = useMemo(
     () => unique([ON_HAND_CASH, ...positiveBankNames, CREDIT_CARD_DEBT]),
@@ -100,8 +106,27 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
   }, [exchange, mode, form.amount, form.currency, form.to_currency, toAmountManual, usdRate])
 
   function update(key, value) {
-    setForm((current) => ({ ...current, [key]: value }))
+    setForm((current) => ({ ...current, [key]: value, operation_id: crypto.randomUUID() }))
   }
+
+  // Investment accounts have a fixed currency. Bank buckets can hold either currency.
+  useEffect(() => {
+    if (mode === 'income') {
+      const fixed = ACCOUNT_CURRENCY[form.to_bucket]
+      if (fixed && form.currency !== fixed) update('currency', fixed)
+      return
+    }
+    if (mode !== 'transfer') return
+    const currency = ACCOUNT_CURRENCY[form.from_bucket] || form.currency
+    const toCurrency = ACCOUNT_CURRENCY[form.to_bucket] || (ACCOUNT_CURRENCY[form.from_bucket] === 'USD' ? 'TWD' : form.to_currency)
+    if (currency === form.currency && toCurrency === form.to_currency) return
+    setToAmountManual(false)
+    setForm(current => ({ ...current, currency, to_currency: toCurrency, to_amount: '', operation_id: crypto.randomUUID() }))
+  }, [mode, form.from_bucket, form.to_bucket])
+
+  useEffect(() => {
+    if (mode === 'transfer') setExchange(form.currency !== form.to_currency)
+  }, [mode, form.currency, form.to_currency])
 
   function noteWithTag(tag, note) {
     return [tag, note.trim()].filter(Boolean).join(' - ')
@@ -133,12 +158,22 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
     })
   }
 
+  function presetTwdToUsExchange() {
+    setMode('transfer'); setExchange(true); setToAmountManual(false)
+    setForm(current => ({ ...current, amount: '', operation_id: crypto.randomUUID(),
+      from_bucket: bankNames.includes('國泰現金') ? '國泰現金' : bankNames[0] || ON_HAND_CASH,
+      to_bucket: '美股', currency: 'TWD', to_currency: 'USD', to_amount: '' }))
+    setMessage('請確認換出的 TWD 與實際入帳的 USD；估算金額可以直接修改。')
+  }
+
   function presetUsSaleExchange() {
     setMode('transfer')
     setExchange(true)
     setToAmountManual(false)
     setForm((current) => ({
       ...current,
+      operation_id: crypto.randomUUID(),
+      amount: '', to_amount: '',
       from_bucket: ACCOUNTS[1],
       to_bucket: bankNames.includes('國泰現金') ? '國泰現金' : bankNames[0] || '',
       currency: 'USD',
@@ -168,11 +203,13 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
     try {
       const amount = Number(form.amount)
       if (!Number.isFinite(amount) || amount <= 0) throw new Error('請輸入大於 0 的金額')
-      if (exchange && mode === 'transfer' && Number(form.to_amount) <= 0) {
+      if (exchange && mode === 'transfer' && (!Number.isFinite(Number(form.to_amount)) || Number(form.to_amount) <= 0)) {
         throw new Error('請輸入大於 0 的換入金額')
       }
 
       let payload = {
+        operation_id: form.operation_id,
+        affects_balance: form.affects_balance !== false,
         movement_date: form.movement_date,
         from_bucket: null,
         to_bucket: form.to_bucket,
@@ -195,13 +232,14 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
           note: noteWithTags(form.expense_tags.length ? form.expense_tags : ['其他'], form.note),
         }
       } else {
-        payload = { ...payload, to_bucket: form.other_type, note: noteWithTag(form.other_type, form.note) }
+        const debt = form.other_type.includes('待還款')
+        payload = { ...payload, from_bucket: debt ? form.other_type : null, to_bucket: debt ? (bankNames[0] || ON_HAND_CASH) : form.other_type, note: noteWithTag(form.other_type, form.note) }
       }
 
       // 排進佇列就回來，不等網路
       queue.enqueue(payload, `${payload.to_bucket} ${payload.amount}`)
       setNoteOpen(false)
-      setForm((current) => ({ ...current, amount: '', to_amount: '', note: '', expense_tags: ['其他'] }))
+      setForm((current) => ({ ...current, operation_id: crypto.randomUUID(), movement_date: today(), amount: '', to_amount: '', note: '', expense_tags: ['其他'] }))
       return true
     } catch (error) {
       setMessage(error.message || '儲存失敗，請稍後再試')
@@ -214,7 +252,7 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
     saveMovement()
   }
 
-  const amountLabel = mode === 'income' ? '收入金額' : mode === 'transfer' ? '調動金額' : mode === 'expense' ? '支出金額' : '其他金額'
+  const amountLabel = mode === 'income' ? '收入金額' : mode === 'transfer' ? '換出金額' : mode === 'expense' ? '支出金額' : '其他金額'
 
   return (
     <section
@@ -253,26 +291,14 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
           </div>
 
           <form onSubmit={submit} className="grid gap-3 px-3 pb-3 sm:grid-cols-2 lg:grid-cols-6 lg:items-end">
-            {mode === 'transfer' ? (
-              <div className="grid gap-2 rounded-md border border-sky-500/30 bg-sky-500/[0.06] p-3 text-xs text-slate-300 sm:col-span-2 lg:col-span-6">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="flex items-center gap-1.5 text-sky-100">
-                    <ArrowRightLeft size={14} />
-                    換匯會同時扣除來源幣別、增加目的地幣別
-                  </span>
-                  <button
-                    type="button"
-                    onClick={presetUsSaleExchange}
-                    className="rounded-md border border-sky-400/50 bg-sky-500/10 px-2.5 py-1.5 text-[11px] text-sky-100 transition hover:border-sky-300 hover:bg-sky-500/20 active:scale-[0.98]"
-                  >
-                    預設：美股 USD → 國泰 TWD
-                  </button>
-                </div>
-                <span className="text-[11px] text-slate-500">
-                  例如：來源選「美股」、目的地選「國泰現金」、勾選換匯，輸入 USD 金額與換得的 TWD 金額。
-                </span>
+            {mode === 'transfer' ? <div className="grid gap-3 rounded-md border border-sky-500/30 bg-sky-500/[0.06] p-3 text-xs sm:col-span-2 lg:col-span-6">
+              <p className="text-sky-100">選擇換匯方向，再確認兩邊實際收付金額。</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <button type="button" onClick={presetTwdToUsExchange} className="rounded border border-sky-400/50 px-3 py-2 text-sky-100">台幣帳戶 TWD → 美股 USD</button>
+                <button type="button" onClick={presetUsSaleExchange} className="rounded border border-sky-400/50 px-3 py-2 text-sky-100">美股 USD → 台幣帳戶 TWD</button>
               </div>
-            ) : null}
+              <p className="text-slate-400">來源與目的地可自行選擇；跨幣別會自動啟用換匯，預填的估算值可改成銀行或券商實際入帳金額。</p>
+            </div> : null}
 
             <label className="grid gap-1 text-xs text-slate-400">
               日期
@@ -312,7 +338,7 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
 
             {mode === 'expense' ? (
               <div className="grid gap-2 text-xs text-slate-400 sm:col-span-2 lg:col-span-6">
-                <span>支出 tag</span>
+                <span>支出分類</span>
                 <div className="flex flex-wrap gap-2">
                   {EXPENSE_TAGS.map((tag) => (
                     <button
@@ -355,14 +381,15 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
             ) : null}
 
             <div className="grid gap-1 text-xs text-slate-400">
-              金額
+              {mode === 'transfer' ? `換出金額（${form.currency}）` : `金額（${form.currency}）`}
               <MobileNumericInput
                 value={form.amount}
                 onChange={(value) => update('amount', normalizeAmount(value))}
                 label={amountLabel}
                 subtitle={mode === 'expense' ? `從 ${form.from_bucket} 支出` : undefined}
+                masked={hideAmounts}
                 currency={form.currency}
-                onCurrencyChange={updateSourceCurrency}
+                onCurrencyChange={(mode === 'transfer' && ACCOUNT_CURRENCY[form.from_bucket]) || (mode === 'income' && ACCOUNT_CURRENCY[form.to_bucket]) ? undefined : updateSourceCurrency}
                 onComplete={mode === 'expense' ? saveMovement : undefined}
                 primaryLabel={mode === 'expense' ? '完成並儲存' : '完成'}
                 secondaryLabel={mode === 'expense' ? '完成並跳出' : undefined}
@@ -378,7 +405,7 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
 
             <label className="hidden max-w-20 gap-1 text-[11px] text-slate-500 sm:grid">
               幣別
-              <select className="rounded-md border border-line bg-[#0b1020] px-2 py-1.5 text-xs text-white" value={form.currency} onChange={(event) => update('currency', event.target.value)}>
+              <select className="rounded-md border border-line bg-[#0b1020] px-2 py-1.5 text-xs text-white" value={form.currency} disabled={(mode === 'transfer' && Boolean(ACCOUNT_CURRENCY[form.from_bucket])) || (mode === 'income' && Boolean(ACCOUNT_CURRENCY[form.to_bucket]))} onChange={(event) => updateSourceCurrency(event.target.value)}>
                 <option value="TWD">TWD</option>
                 <option value="USD">USD</option>
               </select>
@@ -386,24 +413,25 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
 
             {mode === 'transfer' ? (
               <label className="flex items-center gap-2 rounded-md border border-line bg-panel px-3 py-2 text-xs text-slate-300">
-                <input className="min-h-0" type="checkbox" checked={exchange} onChange={(event) => toggleExchange(event.target.checked)} />
-                換匯
+                <input className="min-h-0" type="checkbox" checked={exchange} readOnly disabled />
+                跨幣別換匯（兩邊金額分別入帳）
               </label>
             ) : null}
 
             {mode === 'transfer' && exchange ? (
               <>
                 <div className="grid gap-1 text-xs text-slate-400">
-                  換入金額
+                  實際入帳金額（{form.to_currency}）
                   <MobileNumericInput
                     value={form.to_amount}
                     onChange={(value) => {
                       setToAmountManual(true)
                       update('to_amount', normalizeAmount(value))
                     }}
-                    label="換入金額"
+                    label="實際入帳金額"
+                    masked={hideAmounts}
                     currency={form.to_currency}
-                    onCurrencyChange={updateToCurrency}
+                    onCurrencyChange={ACCOUNT_CURRENCY[form.to_bucket] ? undefined : updateToCurrency}
                     allowZero={false}
                   />
                   <div className="flex items-center justify-between gap-2 text-[11px] text-slate-500">
@@ -423,7 +451,7 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
                 </div>
                 <label className="hidden max-w-20 gap-1 text-[11px] text-slate-500 sm:grid">
                   換入幣別
-                  <select className="rounded-md border border-line bg-[#0b1020] px-2 py-1.5 text-xs text-white" value={form.to_currency} onChange={(event) => updateToCurrency(event.target.value)}>
+                  <select className="rounded-md border border-line bg-[#0b1020] px-2 py-1.5 text-xs text-white" value={form.to_currency} disabled={Boolean(ACCOUNT_CURRENCY[form.to_bucket])} onChange={(event) => updateToCurrency(event.target.value)}>
                     <option value="USD">USD</option>
                     <option value="TWD">TWD</option>
                   </select>
@@ -436,8 +464,9 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
                 <NumericKeypad
                   value={form.amount}
                   onChange={(value) => update('amount', normalizeAmount(value))}
-                  currency={form.currency}
-                  onCurrencyChange={updateSourceCurrency}
+                  masked={hideAmounts}
+                currency={form.currency}
+                  onCurrencyChange={ACCOUNT_CURRENCY[form.from_bucket] && mode === 'transfer' ? undefined : updateSourceCurrency}
                 />
               </div>
             ) : null}
@@ -449,6 +478,12 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
               </label>
             ) : null}
 
+            <label className="flex items-center gap-2 text-xs text-slate-400 sm:col-span-2 lg:col-span-6"><input type="checkbox" checked={form.affects_balance !== false} onChange={event => update('affects_balance', event.target.checked)} />同步調整目前餘額（取消勾選只補歷史紀錄）</label>
+            {mode === 'transfer' && Number(form.amount) > 0 ? <div className="rounded border border-sky-500/30 bg-panel p-3 text-sm text-sky-100 sm:col-span-2 lg:col-span-6">
+              扣除 {form.from_bucket} {hideAmounts ? '••••' : money(Number(form.amount), form.currency)}
+              <span className="mx-2">→</span>
+              入帳 {form.to_bucket} {hideAmounts ? '••••' : money(exchange ? Number(form.to_amount) : Number(form.amount), exchange ? form.to_currency : form.currency)}
+            </div> : null}
             {/* 按鈕不再因為儲存中而 disabled —— 可以直接打下一筆 */}
             <button className="flex items-center justify-center gap-2 rounded-md bg-sky-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-400 active:scale-[0.99] lg:col-span-1">
               儲存紀錄
@@ -465,7 +500,7 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
               <div className="grid gap-1 rounded-md border border-rose-500/50 bg-rose-500/10 p-2 text-xs text-rose-100 lg:col-span-6">
                 {queue.failed.map((item) => (
                   <div key={item.id} className="flex flex-wrap items-center gap-2">
-                    <span className="flex-1">未存成功：{item.label}（{item.error}）</span>
+                    <span className="flex-1">未存成功：{hideAmounts ? '金額已隱藏' : item.label}（{hideAmounts ? '請重試或重新讀取' : item.error}）</span>
                     <button type="button" onClick={() => queue.retry(item.id)} className="rounded border border-rose-300/60 px-2 py-0.5">重試</button>
                     <button type="button" onClick={() => queue.dismiss(item.id)} className="rounded border border-rose-300/30 px-2 py-0.5 text-rose-200/70">丟棄</button>
                   </div>
@@ -473,7 +508,7 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
               </div>
             ) : null}
 
-            {message ? <div className="text-xs text-rose-300 lg:col-span-6">{message}</div> : null}
+            {message ? <div role="status" className={`text-xs lg:col-span-6 ${/大於|失敗|不正確/.test(message) ? 'text-rose-300' : 'text-sky-200'}`}>{message}</div> : null}
           </form>
         </div>
       ) : null}

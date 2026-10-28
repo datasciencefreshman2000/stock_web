@@ -4,14 +4,14 @@ import { maskAmount } from '../../context/PrivacyContext'
 import { money, number, percent, pnlClass } from '../../utils/format'
 
 export default function HoldingTradeDetails({ row, trades, loading, error, currency, hideAmounts, onClose, detailRef, className = '' }) {
-  const currentPrice = Number(row.current_price || 0)
+  const currentPrice = row.current_price == null ? null : Number(row.current_price)
 
   return (
     <div ref={detailRef} className={`rounded-md border border-line bg-panel/70 p-3 ${className}`}>
       <div className="mb-2 flex items-center justify-between gap-3">
         <div>
           <div className="text-sm font-medium text-white">{row.ticker} 買入紀錄</div>
-          <div className="text-xs text-slate-500">以目前現價估算每筆買入損益</div>
+          <div className="text-xs text-slate-500">以目前現價估算，成本及已實現損益含買賣費用</div>
         </div>
         <button type="button" onClick={onClose} className="rounded-md border border-line p-1.5 text-slate-400 hover:border-sky-500 hover:text-white" aria-label="收起明細">
           <X size={15} />
@@ -43,17 +43,17 @@ export default function HoldingTradeDetails({ row, trades, loading, error, curre
                 const activeQty = remainingQty > 1e-7 ? remainingQty : 0
                 const price = Number(trade.price || 0)
                 const avgSellPrice = soldQty > 0 ? Number(trade.sell_value || 0) / soldQty : null
-                const realizedPnl = soldQty > 0 ? Number(trade.sell_value || 0) - soldQty * price : 0
-                const unrealizedPnl = activeQty > 0 ? (currentPrice - price) * activeQty : 0
-                const pnl = realizedPnl + unrealizedPnl
+                const realizedPnl = Number(trade.realized_pnl_net || 0)
+                const unrealizedPnl = activeQty > 0 ? (currentPrice === null ? null : (currentPrice - price) * activeQty) : 0
+                const pnl = unrealizedPnl === null ? null : realizedPnl + unrealizedPnl
                 const costBasis = price * (soldQty + activeQty)
-                const pnlRatio = costBasis > 0 ? pnl / costBasis : null
+                const pnlRatio = pnl !== null && costBasis > 0 ? pnl / costBasis : null
                 return (
                   <tr key={trade.id || `${trade.date}-${trade.price}-${trade.buy_qty}`} className="border-t border-line/70">
                     <td className="py-2 text-slate-300">{trade.date || '--'}</td>
-                    <td className="py-2 text-right text-slate-300">{number(qty, 4)}</td>
-                    <td className="py-2 text-right text-slate-300">{number(soldQty, 4)}</td>
-                    <td className="py-2 text-right text-slate-300">{number(activeQty, 4)}</td>
+                    <td className="py-2 text-right text-slate-300">{hideAmounts ? '••••' : number(qty, 4)}</td>
+                    <td className="py-2 text-right text-slate-300">{hideAmounts ? '••••' : number(soldQty, 4)}</td>
+                    <td className="py-2 text-right text-slate-300">{hideAmounts ? '••••' : number(activeQty, 4)}</td>
                     <td className="py-2 text-right text-slate-300">{hideAmounts ? '••••' : number(price, 2)}</td>
                     <td className="py-2 text-right text-slate-300">{hideAmounts ? (soldQty > 0 ? '••••' : '--') : avgSellPrice ? number(avgSellPrice, 2) : '--'}</td>
                     <td className={`py-2 text-right ${pnlClass(pnl)}`}>{hideAmounts ? maskAmount(money(pnl, currency)) : money(pnl, currency)}</td>

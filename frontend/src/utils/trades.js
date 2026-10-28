@@ -16,6 +16,7 @@ export function dateValue(date) {
 }
 
 export function rangeFilters(type) {
+  if (type === 'all') return { start_date: '', end_date: '' }
   const end = new Date()
   const start = new Date()
   if (type === '1d') start.setDate(end.getDate())
@@ -59,6 +60,7 @@ export function tradeFormFromTrade(trade, fallbackAccount) {
   const isBuy = Number(trade.buy_qty || 0) > 0
   const fallback = fallbackAccount === COMBINED_HISTORY_ACCOUNT ? ACCOUNTS[0] : fallbackAccount
   return {
+    expected_updated_at: trade.updated_at,
     account: trade.account || fallback,
     ticker: trade.ticker || '',
     date: trade.date || dateValue(new Date()),
@@ -77,13 +79,14 @@ export function isTwTradeForm(form) {
 export function tradePayloadFromForm(form) {
   const qty = Number(form.qty)
   return {
+    expected_updated_at: form.expected_updated_at,
     account: form.account,
     ticker: form.ticker.trim().toUpperCase(),
     date: form.date,
     buy_qty: form.side === 'buy' ? qty : null,
     sell_qty: form.side === 'sell' ? qty : null,
     price: Number(form.price),
-    fee: isTwTradeForm(form) ? 0 : Number(form.fee || 0),
+    fee: isTwTradeForm(form) ? null : Number(form.fee || 0),
     note: form.note,
   }
 }

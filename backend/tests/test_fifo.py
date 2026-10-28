@@ -129,7 +129,7 @@ def test_tw_sell_deducts_fee_and_tax_from_realized_pnl():
     tax = int(110 * 1000 * 0.003)
     assert result["total_fee"] == fee_buy + fee_sell
     assert result["total_tax"] == tax
-    assert result["realized_pnl"] == pytest.approx(110000 - fee_sell - tax - 100000)
+    assert result["realized_pnl"] == pytest.approx(110000 - fee_sell - tax - 100000 - fee_buy)
 
 
 def test_us_account_uses_recorded_fee():
@@ -137,7 +137,7 @@ def test_us_account_uses_recorded_fee():
     result = calc_fifo(trades, US, "AAA")
     assert result["total_fee"] == 3
     assert result["total_tax"] == 0
-    assert result["realized_pnl"] == pytest.approx(1500 - 2 - 1000)
+    assert result["realized_pnl"] == pytest.approx(1500 - 2 - 1000 - 1)
 
 
 # -------------------------------------------------------- 分割 / 除權息

@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 from config import get_settings
 from services.fifo import FifoState, apply_trades, summarize_state
 from services.symbols import symbol_for
+from services.dates import today, TAIPEI_TZ
 
 # repositories 會拉進 supabase client，這裡刻意延遲匯入：
 # 計算核心（analyze_account / _resume_point 等）必須能在沒有資料庫的情況下測試。
@@ -30,7 +31,7 @@ def trade_date_key(trade: dict) -> str:
 def checkpoint_boundary(now: datetime | None = None) -> str:
     """checkpoint 只結算到「今天 - lag」，近期交易留在可隨時重算的熱區。"""
     settings = get_settings()
-    current = (now or datetime.now(timezone.utc)).date()
+    current = (now or datetime.now(timezone.utc)).astimezone(TAIPEI_TZ).date()
     return (current - timedelta(days=settings.fifo_checkpoint_lag_days)).isoformat()
 
 
@@ -73,6 +74,7 @@ def _state_to_checkpoint(account: str, ticker: str, as_of_date: str, state: Fifo
         "unmatched_sell_qty": state.unmatched_sell_qty,
         "unmatched_sell_value": state.unmatched_sell_value,
         "trade_count": state.trade_count,
+        "calculation_version": 2,
     }
 
 
@@ -115,6 +117,7 @@ def analyze_account(
     up_to: str | None = None,
 ) -> dict[str, dict]:
     """計算該帳戶每個 ticker 的 FIFO 結果（優先從 checkpoint 續算）。"""
+    up_to = up_to or today()
     by_ticker = group_by_ticker(trades)
     checkpoints = checkpoints or {}
     actions_by_symbol = actions_by_symbol or {}
@@ -147,7 +150,7 @@ def _resume_point(
     checkpoint: dict | None,
 ) -> tuple[FifoState, list[dict], list[dict]]:
     """決定要從哪裡開始算。checkpoint 可疑時退回全量重算。"""
-    if not checkpoint:
+    if not checkpoint or checkpoint.get("calculation_version") != 2:
         return FifoState(), ticker_trades, actions
 
     as_of = str(checkpoint.get("as_of_date") or "")
@@ -163,7 +166,7 @@ def _resume_point(
     return state, pending_trades, pending_actions
 
 
-def settle_account(account: str, trades: list[dict], as_of_date: str) -> int:
+def settle_account(account: str, trades: list[dict], as_of_date: str, revision: int) -> int:
     """把該帳戶結算到 as_of_date，寫入 checkpoint。回傳寫入筆數。"""
     from repositories.fifo_checkpoints import list_latest_checkpoints, prune_checkpoints, upsert_checkpoints
 
@@ -186,7 +189,7 @@ def settle_account(account: str, trades: list[dict], as_of_date: str) -> int:
         _state_to_checkpoint(account, ticker, as_of_date, result["_state"])
         for ticker, result in results.items()
     ]
-    upsert_checkpoints(rows)
+    upsert_checkpoints(rows, revision)
     for ticker in results:
         prune_checkpoints(account, ticker)
     return len(rows)

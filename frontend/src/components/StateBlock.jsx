@@ -20,10 +20,11 @@ export function LoadingBlock({ label = '載入中', fullscreen = false }) {
   )
 }
 
-export function ErrorBlock({ error }) {
+export function ErrorBlock({ error, onRetry = () => window.location.reload() }) {
   return (
     <div className="rounded-md border border-rose-900 bg-rose-950/40 p-5 text-rose-100">
-      {error?.message || '發生錯誤'}
+      <span role="alert">{error?.message || '發生錯誤'}</span>
+      <button type="button" onClick={onRetry} className="ml-3 rounded border border-rose-300/50 px-3 text-sm">重試</button>
     </div>
   )
 }

@@ -1,215 +1,31 @@
 from database import fetch_all, get_supabase
 
 
-MANUAL_INVESTMENTS_MISSING = "manual_investments table is missing. Run backend/sql/migrations/20260511_manual_investments.sql in Supabase SQL Editor."
-MANUAL_INVESTMENT_OPTIONAL_COLUMNS = ["cash_amount"]
-
-
-def is_missing_manual_investments_error(exc: Exception) -> bool:
-    message = str(exc)
-    return "manual_investments" in message and ("PGRST205" in message or "Could not find the table" in message)
-
-
-def remove_unsupported_optional_columns(payload: dict, exc: Exception) -> bool:
-    message = str(exc)
-    for column in MANUAL_INVESTMENT_OPTIONAL_COLUMNS:
-        if column in payload and f"'{column}' column" in message:
-            payload.pop(column)
-            return True
-    return False
-
-
 def list_manual_values() -> list[dict]:
     response = get_supabase().table("manual_values").select("*").execute()
     return response.data or []
 
 
-def upsert_manual_value(key: str, value: float) -> dict:
-    response = (
-        get_supabase()
-        .table("manual_values")
-        .upsert({"key": key, "value": value}, on_conflict="key")
-        .execute()
-    )
-    return response.data[0] if response.data else {"key": key, "value": value}
+def list_balance_adjustments(start: str, end: str) -> list[dict]:
+    rows = fetch_all(lambda: get_supabase().table("balance_adjustments").select("*")
+        .gte("created_at", start + "T00:00:00+08:00").lt("created_at", end + "T00:00:00+08:00")
+        .order("created_at", desc=True).order("id", desc=True))
+    cash = {row["id"]: row for row in list_cash_accounts()}
+    for row in rows:
+        source = cash.get(row["record_key"], {})
+        row["name"] = source.get("name") or row["record_key"].removeprefix("invested_")
+        row["currency"] = source.get("currency") or ("USD" if row["name"] in {"美股", "爸媽美股"} else "TWD")
+    return rows
 
 
 def list_cash_accounts() -> list[dict]:
-    response = get_supabase().table("cash_accounts").select("*").order("name").execute()
+    response = get_supabase().table("cash_accounts").select("*").is_("archived_at", "null").order("name").execute()
     return response.data or []
 
 
-def update_cash(cash_id: str, amount: float, currency: str | None = None) -> dict:
-    payload = {"amount": amount}
-    if currency:
-        payload["currency"] = currency
-    response = (
-        get_supabase()
-        .table("cash_accounts")
-        .update(payload)
-        .eq("id", cash_id)
-        .execute()
-    )
-    return response.data[0] if response.data else {"id": cash_id, **payload}
-
-
-def create_cash(payload: dict) -> dict:
-    attempted_payload = dict(payload)
-    optional_columns = ["account", "category"]
-
-    for _ in range(len(optional_columns) + 1):
-        try:
-            response = get_supabase().table("cash_accounts").insert(attempted_payload).execute()
-            return response.data[0] if response.data else attempted_payload
-        except Exception as exc:
-            message = str(exc)
-            removed = False
-            for column in optional_columns:
-                if column in attempted_payload and f"'{column}' column" in message:
-                    attempted_payload.pop(column)
-                    removed = True
-                    break
-            if not removed:
-                raise
-
-    response = get_supabase().table("cash_accounts").insert(attempted_payload).execute()
-    return response.data[0] if response.data else attempted_payload
-
-
-def adjust_cash_balance(name: str, currency: str, delta: float) -> dict:
-    response = (
-        get_supabase()
-        .table("cash_accounts")
-        .select("*")
-        .eq("name", name)
-        .eq("currency", currency)
-        .limit(1)
-        .execute()
-    )
-    row = response.data[0] if response.data else None
-    if row:
-        amount = float(row.get("amount") or 0) + delta
-        return update_cash(row["id"], amount, currency)
-
-    category = "負債" if delta < 0 or "欠錢" in name else "現金"
-    return create_cash({"name": name, "account": "", "category": category, "currency": currency, "amount": delta})
-
-
 def list_manual_investments() -> list[dict]:
-    try:
-        response = get_supabase().table("manual_investments").select("*").order("name").execute()
-        return response.data or []
-    except Exception:
-        values = {row["key"]: float(row["value"]) for row in list_manual_values()}
-        return [
-            {
-                "id": "legacy-morgan",
-                "name": "摩根新興科技",
-                "asset_type": "其他",
-                "cost": values.get("morgan_cost", 74000),
-                "cash_amount": 0,
-                "value": values.get("morgan_value", 0),
-                "currency": "TWD",
-            },
-            {
-                "id": "legacy-nomura",
-                "name": "野村高科技",
-                "asset_type": "其他",
-                "cost": values.get("nomura_cost", 47500),
-                "cash_amount": 0,
-                "value": values.get("nomura_value", 0),
-                "currency": "TWD",
-            },
-            {
-                "id": "legacy-crypto",
-                "name": "加密貨幣",
-                "asset_type": "其他",
-                "cost": values.get("crypto_cost", 68785),
-                "cash_amount": 0,
-                "value": values.get("crypto_value", 0),
-                "currency": "TWD",
-            },
-        ]
-
-
-def create_manual_investment(payload: dict) -> dict:
-    attempted_payload = dict(payload)
-    try:
-        response = get_supabase().table("manual_investments").insert(attempted_payload).execute()
-    except Exception as exc:
-        if is_missing_manual_investments_error(exc):
-            raise RuntimeError(MANUAL_INVESTMENTS_MISSING) from exc
-        if remove_unsupported_optional_columns(attempted_payload, exc):
-            response = get_supabase().table("manual_investments").insert(attempted_payload).execute()
-            return response.data[0] if response.data else attempted_payload
-        raise
-    return response.data[0] if response.data else attempted_payload
-
-
-def update_manual_investment(investment_id: str, payload: dict) -> dict:
-    clean = {key: value for key, value in payload.items() if value is not None}
-    try:
-        response = (
-            get_supabase()
-            .table("manual_investments")
-            .update(clean)
-            .eq("id", investment_id)
-            .execute()
-        )
-    except Exception as exc:
-        if is_missing_manual_investments_error(exc):
-            raise RuntimeError(MANUAL_INVESTMENTS_MISSING) from exc
-        if remove_unsupported_optional_columns(clean, exc):
-            response = (
-                get_supabase()
-                .table("manual_investments")
-                .update(clean)
-                .eq("id", investment_id)
-                .execute()
-            )
-            return response.data[0] if response.data else {"id": investment_id, **clean}
-        raise
-    return response.data[0] if response.data else {"id": investment_id, **clean}
-
-
-def update_manual_investments(rows: list[dict]) -> list[dict]:
-    """一次更新多筆基金資料，避免每列各自觸發快取修補。"""
-    if not rows:
-        return []
-    attempted_rows = [{key: value for key, value in row.items() if value is not None} for row in rows]
-    try:
-        response = (
-            get_supabase()
-            .table("manual_investments")
-            .upsert(attempted_rows, on_conflict="id")
-            .execute()
-        )
-    except Exception as exc:
-        if is_missing_manual_investments_error(exc):
-            raise RuntimeError(MANUAL_INVESTMENTS_MISSING) from exc
-        message = str(exc)
-        if any(f"'{column}' column" in message for column in MANUAL_INVESTMENT_OPTIONAL_COLUMNS):
-            for row in attempted_rows:
-                for column in MANUAL_INVESTMENT_OPTIONAL_COLUMNS:
-                    row.pop(column, None)
-            response = (
-                get_supabase()
-                .table("manual_investments")
-                .upsert(attempted_rows, on_conflict="id")
-                .execute()
-            )
-        else:
-            raise
-    return response.data or attempted_rows
-
-
-def delete_manual_investment(investment_id: str) -> None:
-    try:
-        get_supabase().table("manual_investments").delete().eq("id", investment_id).execute()
-    except Exception as exc:
-        if is_missing_manual_investments_error(exc):
-            raise RuntimeError(MANUAL_INVESTMENTS_MISSING) from exc
-        raise
+    response = get_supabase().table("manual_investments").select("*").order("name").execute()
+    return response.data or []
 
 
 def list_capital_movements(start_date: str, end_date: str) -> list[dict]:
@@ -224,16 +40,7 @@ def list_capital_movements(start_date: str, end_date: str) -> list[dict]:
             .order("created_at", desc=True)
         )
 
-    try:
-        # 記帳是每天好幾筆的東西，一年就可能破千列
-        return fetch_all(build)
-    except Exception:
-        return []
-
-
-def create_capital_movement(payload: dict) -> dict:
-    response = get_supabase().table("capital_movements").insert(payload).execute()
-    return response.data[0] if response.data else payload
+    return fetch_all(build)
 
 
 def get_capital_movement(movement_id: str) -> dict | None:
@@ -249,34 +56,8 @@ def get_capital_movement(movement_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
-def update_capital_movement(movement_id: str, payload: dict) -> dict:
-    response = (
-        get_supabase()
-        .table("capital_movements")
-        .update(payload)
-        .eq("id", movement_id)
-        .execute()
-    )
-    return response.data[0] if response.data else {"id": movement_id, **payload}
-
-
-def delete_capital_movement(movement_id: str) -> None:
-    get_supabase().table("capital_movements").delete().eq("id", movement_id).execute()
-
-
 def list_capital_movement_options(category: str) -> list[dict]:
-    try:
-        response = (
-            get_supabase()
-            .table("capital_movement_options")
-            .select("*")
-            .eq("category", category)
-            .order("label")
-            .execute()
-        )
-        return response.data or []
-    except Exception:
-        return []
+    return get_supabase().table("capital_movement_options").select("*").eq("category", category).order("label").execute().data or []
 
 
 def create_capital_movement_option(payload: dict) -> dict:

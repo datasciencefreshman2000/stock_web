@@ -11,6 +11,7 @@ sell_value），畫面不需要跟著改。
 from services.fifo import EPSILON, SPLIT_ACTIONS, action_sort_key, trade_sort_key
 from services.constants import ETF_LIST, TW_ACCOUNTS
 from services.fees import calc_tw_fee, calc_tw_tax
+from services.dates import today
 
 
 def _new_row(trade: dict, qty: float, price: float) -> dict:
@@ -49,7 +50,8 @@ def build_buy_lot_details(
     lots: list[dict] = []  # [{row, remaining_qty}]
     unmatched_sell_balance = 0.0
 
-    pending_actions = sorted(actions or [], key=action_sort_key)
+    cutoff = today()
+    pending_actions = sorted([a for a in (actions or []) if str(a.get("ex_date") or "") <= cutoff], key=action_sort_key)
     action_index = 0
 
     def apply_split(ratio: float) -> None:
@@ -82,6 +84,8 @@ def build_buy_lot_details(
 
     for trade in sorted(trades, key=trade_sort_key):
         trade_date = str(trade.get("date") or "")
+        if trade_date > cutoff:
+            continue
         if trade_date:
             flush_actions(trade_date)
 
@@ -93,13 +97,14 @@ def build_buy_lot_details(
             matched_gap_qty = min(buy_qty, unmatched_sell_balance)
             unmatched_sell_balance -= matched_gap_qty
             long_qty = buy_qty - matched_gap_qty
-            row = _new_row(trade, long_qty, price)
+            fee = calc_tw_fee(price, buy_qty) if is_tw and not trade.get("fee") else float(trade.get("fee") or 0)
+            row = _new_row(trade, long_qty, price + fee / buy_qty)
             rows.append(row)
             if long_qty > EPSILON:
                 lots.append({"row": row, "remaining_qty": long_qty})
 
         if sell_qty > 0:
-            fee = calc_tw_fee(price, sell_qty) if is_tw else float(trade.get("fee") or 0)
+            fee = calc_tw_fee(price, sell_qty) if is_tw and not trade.get("fee") else float(trade.get("fee") or 0)
             tax = calc_tw_tax(price, sell_qty, ticker, is_etf=etf) if is_tw else 0.0
 
             remaining = sell_qty

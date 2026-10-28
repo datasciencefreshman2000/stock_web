@@ -10,6 +10,7 @@ try {
 }
 
 const unauthorizedHandlers = new Set()
+const retryOperations = new Map()
 
 export const auth = {
   getToken: () => token,
@@ -84,7 +85,22 @@ async function request(path, options = {}) {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) }
   if (token) headers.Authorization = `Bearer ${token}`
 
-  const res = await fetch(`${BASE}${path}`, { ...options, headers })
+  const method = options.method || 'GET'
+  const operationKey = `${method}:${path}:${options.body || ''}`
+  let url = path
+  let body = options.body
+  if (['POST', 'PATCH', 'DELETE'].includes(method) && !path.startsWith('/auth') && !path.startsWith('/jobs')) {
+    const id = retryOperations.get(operationKey) || crypto.randomUUID()
+    retryOperations.set(operationKey, id)
+    if (body) { const payload = JSON.parse(body); body = JSON.stringify({ ...payload, operation_id: payload.operation_id || id }) }
+    else if (method === 'DELETE') url += `${url.includes('?') ? '&' : '?'}operation_id=${id}`
+  }
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 30000)
+  let res
+  try { res = await fetch(`${BASE}${url}`, { ...options, body, headers, signal: options.signal || controller.signal }) }
+  catch (error) { throw new ApiError(error.name === 'AbortError' ? '連線逾時，請重試；同一操作不會重複入帳。' : '網路連線失敗，請檢查連線後重試。', 0) }
+  finally { clearTimeout(timeout) }
 
   if (res.status === 401) {
     auth.clear()
@@ -102,6 +118,7 @@ async function request(path, options = {}) {
     }
     throw new ApiError(message, res.status)
   }
+  retryOperations.delete(operationKey)
   return res.json()
 }
 
@@ -156,10 +173,10 @@ export const api = {
     request(`/actions/suggest/${encodeURIComponent(account)}/${encodeURIComponent(ticker)}`),
 
   getManual: () => request('/manual'),
-  updateManualValue: (key, value) =>
-    request('/manual/value', { method: 'PATCH', body: JSON.stringify({ key, value }) }),
-  updateCash: (id, amount, currency) =>
-    request(`/manual/cash/${id}`, { method: 'PATCH', body: JSON.stringify({ amount, currency }) }),
+  updateManualValue: (key, value, meta = {}) =>
+    request('/manual/value', { method: 'PATCH', body: JSON.stringify({ key, value, ...meta }) }),
+  updateCash: (id, amount, currency, meta = {}) =>
+    request(`/manual/cash/${id}`, { method: 'PATCH', body: JSON.stringify({ amount, currency, ...meta }) }),
   createCash: (data) => request('/manual/cash', { method: 'POST', body: JSON.stringify(data) }),
   createInvestment: (data) => request('/manual/investment', { method: 'POST', body: JSON.stringify(data) }),
   updateInvestment: (id, data) =>
@@ -169,6 +186,7 @@ export const api = {
   deleteInvestment: (id) => request(`/manual/investment/${id}`, { method: 'DELETE' }),
   getCapitalMovements: (month) =>
     request(`/manual/capital-movements?month=${encodeURIComponent(month)}`),
+  getBalanceAdjustments: month => request(`/manual/balance-adjustments?month=${encodeURIComponent(month)}`),
   createCapitalMovement: (data) => request('/manual/capital-movements', { method: 'POST', body: JSON.stringify(data) }),
   updateCapitalMovement: (id, data) =>
     request(`/manual/capital-movements/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),

@@ -11,8 +11,8 @@ import AllocationBar from './AllocationBar'
 export default function CashRatioSection({ accounts = {}, hideAmounts }) {
   const rows = ACCOUNTS.filter((name) => accounts[name]).map((name) => {
     const row = accounts[name]
-    const cash = Math.max(Number(row.inferred_cash ?? 0), 0)
-    const stocks = Math.max(Number(row.market_value ?? 0), 0)
+    const cash = Number(row.inferred_cash ?? 0)
+    const stocks = row.market_value
     const total = cash + stocks
     const cashRatio = total > 0 ? cash / total : 0
     return {
@@ -21,9 +21,11 @@ export default function CashRatioSection({ accounts = {}, hideAmounts }) {
       stocks,
       total,
       cashRatio,
-      stockRatio: 1 - cashRatio,
+      stockRatio: total > 0 ? stocks / total : 0,
       currency: ACCOUNT_CURRENCY[name] || 'TWD',
       external: EXTERNAL_ACCOUNTS.includes(name),
+      complete: row.valuation_complete !== false && stocks != null,
+      negativeCash: Number(row.inferred_cash || 0) < 0,
     }
   })
 
@@ -44,15 +46,17 @@ export default function CashRatioSection({ accounts = {}, hideAmounts }) {
                   </span>
                 ) : null}
               </span>
-              <span className="shrink-0 text-slate-400 tabular-nums">
+              {row.complete && !row.negativeCash ? <span className="shrink-0 text-slate-400 tabular-nums">
                 現金 <span className="text-white">{(row.cashRatio * 100).toFixed(1)}%</span>
                 {' / '}
                 股票 <span className="text-white">{(row.stockRatio * 100).toFixed(1)}%</span>
-              </span>
+              </span> : <span className="text-xs text-amber-200">配置比例暫停顯示</span>}
             </div>
-            <div className="mb-3">
+            {row.negativeCash ? <p className="mb-2 text-sm text-amber-200">帳戶現金為負，請查看持倉頁確認入金及交易紀錄。</p> : null}
+            {!row.complete ? <p className="text-amber-200">報價不完整，暫停顯示配置比例。</p> : null}
+            {row.complete && !row.negativeCash ? <div className="mb-3">
               <AllocationBar stockRatio={row.stockRatio} cashRatio={row.cashRatio} />
-            </div>
+            </div> : null}
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div className="flex items-center gap-2">
                 <span className="h-2 w-2 rounded-sm bg-sky-400" />

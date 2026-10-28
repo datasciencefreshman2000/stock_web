@@ -4,6 +4,7 @@ from config import get_settings
 from dependencies import require_auth
 from models import LoginRequest
 from services.auth import create_token, verify_password
+from database import get_supabase
 
 router = APIRouter()
 
@@ -17,7 +18,8 @@ def login(payload: LoginRequest) -> dict:
             detail="Auth is not configured. Set APP_PASSWORD_HASH and JWT_SECRET.",
         )
 
-    # pbkdf2 本身約 100ms，足以作為暴力破解的節流
+    if not get_supabase().rpc("check_app_login_limit", {}).execute().data:
+        raise HTTPException(429, "登入嘗試次數過多，請一分鐘後再試。", headers={"Retry-After": "60"})
     if not verify_password(payload.password, settings.app_password_hash):
         raise HTTPException(status_code=401, detail="密碼錯誤")
 

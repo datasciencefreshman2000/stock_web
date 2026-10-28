@@ -1,5 +1,3 @@
-from datetime import datetime, timezone
-
 from database import get_supabase
 
 
@@ -31,117 +29,40 @@ def is_summary_cache_missing_error(exc: Exception) -> bool:
 
 
 def get_summary_cache(cache_key: str = SUMMARY_CACHE_KEY) -> dict | None:
-    try:
-        response = (
-            get_supabase()
-            .table("summary_cache")
-            .select("payload,updated_at")
-            .eq("cache_key", cache_key)
-            .limit(1)
-            .execute()
-        )
-    except Exception as exc:
-        if is_summary_cache_missing_error(exc):
-            return None
-        raise
-    if not response.data:
-        return None
-
-    row = response.data[0]
-    payload = row.get("payload") or {}
-    if isinstance(payload, dict):
-        payload["summary_cached"] = True
-        payload["summary_cached_at"] = row.get("updated_at")
-    return payload
+    return get_supabase().rpc("read_app_cache", {"p_key": cache_key}).execute().data
 
 
 def upsert_summary_cache(payload: dict, cache_key: str = SUMMARY_CACHE_KEY) -> dict:
-    updated_at = datetime.now(timezone.utc).isoformat()
-    clean_payload = {key: value for key, value in payload.items() if key not in {"summary_cached", "summary_cached_at"}}
-    try:
-        response = (
-            get_supabase()
-            .table("summary_cache")
-            .upsert(
-                {
-                    "cache_key": cache_key,
-                    "payload": clean_payload,
-                    "updated_at": updated_at,
-                },
-                on_conflict="cache_key",
-            )
-            .execute()
-        )
-    except Exception as exc:
-        if is_summary_cache_missing_error(exc):
-            fallback = dict(clean_payload)
-            fallback["summary_cached"] = False
-            fallback["summary_cached_at"] = None
-            return fallback
-        raise
-    row = response.data[0] if response.data else {"payload": clean_payload, "updated_at": updated_at}
-    cached = row.get("payload") or clean_payload
-    cached["summary_cached"] = False
-    cached["summary_cached_at"] = row.get("updated_at", updated_at)
-    return cached
+    stamp = upsert_summary_caches({cache_key: payload}, revision=payload["data_revision"])
+    return {**payload, "summary_cached": False, "summary_cached_at": stamp}
 
 
 def get_summary_caches(cache_keys: list[str]) -> dict[str, dict]:
-    """一次讀多把快取。
-
-    先前 cache_patch 是「summary 讀一次、三個帳戶各讀一次」，
-    再加上 patch_summary_cache 內部又各讀一次，光是快取的讀取就 8 次往返。
-    Supabase 一次 in_() 就能全部拿回來。
-    """
     if not cache_keys:
         return {}
-    try:
-        response = (
-            get_supabase()
-            .table("summary_cache")
-            .select("cache_key,payload,updated_at")
-            .in_("cache_key", cache_keys)
-            .execute()
-        )
-    except Exception as exc:
-        if is_summary_cache_missing_error(exc):
-            return {}
-        raise
-
-    result: dict[str, dict] = {}
-    for row in response.data or []:
-        payload = row.get("payload") or {}
-        if not isinstance(payload, dict):
-            continue
-        payload["summary_cached"] = True
-        payload["summary_cached_at"] = row.get("updated_at")
-        result[row["cache_key"]] = payload
-    return result
+    return get_supabase().rpc("read_app_caches", {"p_keys": cache_keys}).execute().data or {}
 
 
-def upsert_summary_caches(payloads: dict[str, dict]) -> str | None:
+def upsert_summary_caches(payloads: dict[str, dict], revision: int | None = None) -> str | None:
     """一次寫多把快取，回傳 updated_at。
 
     同上：四把快取分四次 upsert 是沒必要的，upsert 本來就吃陣列。
     """
     if not payloads:
         return None
-    updated_at = datetime.now(timezone.utc).isoformat()
-    rows = [
-        {
-            "cache_key": cache_key,
-            "payload": {k: v for k, v in payload.items() if k not in {"summary_cached", "summary_cached_at"}},
-            "updated_at": updated_at,
-        }
-        for cache_key, payload in payloads.items()
-    ]
-    try:
-        get_supabase().table("summary_cache").upsert(rows, on_conflict="cache_key").execute()
-    except Exception as exc:
-        if is_summary_cache_missing_error(exc):
-            return None
-        raise
-    return updated_at
+    if revision is None:
+        versions = {value.get("data_revision") for value in payloads.values()}
+        if None in versions or len(versions) != 1:
+            raise ValueError("快取缺少一致的資料版本，拒絕發布。")
+        revision = versions.pop()
+    stamp = get_supabase().rpc("publish_app_caches", {"p_revision": revision, "p_payloads": payloads}).execute().data
+    if not stamp:
+        raise CacheRevisionChanged("資料在重算期間更新，請重試。")
+    return stamp
+
+
+class CacheRevisionChanged(RuntimeError):
+    pass
 
 
 def patch_summary_cache(patch: dict, cache_key: str = SUMMARY_CACHE_KEY) -> dict | None:

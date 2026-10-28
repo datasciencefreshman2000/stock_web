@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 
@@ -28,14 +28,23 @@ export default function MobileNumericInput({
   onDesktopKeyDown,
 }) {
   const [open, setOpen] = useState(false)
+  const dialogRef = useRef(null)
   const [localError, setLocalError] = useState('')
 
   useEffect(() => {
     if (!open) return undefined
+    const previousFocus = document.activeElement
+    const frame = requestAnimationFrame(() => dialogRef.current?.querySelector('button[aria-label="7"]')?.focus())
     const previousOverflow = document.body.style.overflow
     const desktopQuery = window.matchMedia('(min-width: 640px)')
     const closeOnEscape = (event) => {
       if (event.key === 'Escape') setOpen(false)
+      if (event.key === 'Tab') {
+        const nodes = [...(dialogRef.current?.querySelectorAll('button:not(:disabled), select:not(:disabled), input:not(:disabled)') || [])]
+        const first = nodes[0], last = nodes[nodes.length - 1]
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
+      }
     }
     const closeOnDesktop = (event) => {
       if (event.matches) setOpen(false)
@@ -44,6 +53,8 @@ export default function MobileNumericInput({
     window.addEventListener('keydown', closeOnEscape)
     desktopQuery.addEventListener('change', closeOnDesktop)
     return () => {
+      cancelAnimationFrame(frame)
+      if (previousFocus?.isConnected) previousFocus.focus()
       document.body.style.overflow = previousOverflow
       window.removeEventListener('keydown', closeOnEscape)
       desktopQuery.removeEventListener('change', closeOnDesktop)
@@ -69,6 +80,7 @@ export default function MobileNumericInput({
         onClick={() => setOpen(true)}
         disabled={disabled}
         className={`flex min-h-11 w-full items-center justify-end rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm disabled:opacity-50 sm:hidden ${shownValue !== '' ? 'text-white' : 'text-slate-500'}`}
+        aria-label={label}
         aria-haspopup="dialog"
         aria-expanded={open}
       >
@@ -78,6 +90,8 @@ export default function MobileNumericInput({
         ref={inputRef}
         aria-label={label}
         className={`hidden w-full rounded-md border border-line bg-[#0b1020] px-3 py-2 text-right text-sm text-white outline-none focus:border-sky-500 sm:block ${desktopClassName}`}
+        step={maxDecimals ? 10 ** -maxDecimals : 1}
+        min={allowNegative ? undefined : 0}
         type={masked ? 'password' : 'number'}
         inputMode="decimal"
         value={value}
@@ -88,7 +102,7 @@ export default function MobileNumericInput({
       />
       {open
         ? createPortal(
-            <div className="fixed inset-0 z-[70] sm:hidden" role="dialog" aria-modal="true" aria-label={label}>
+            <div ref={dialogRef} className="fixed inset-0 z-[70] sm:hidden" role="dialog" aria-modal="true" aria-label={label}>
               <button
                 type="button"
                 className="keypad-backdrop-enter absolute inset-0 min-h-0 w-full bg-black/70"

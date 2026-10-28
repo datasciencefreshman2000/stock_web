@@ -61,16 +61,13 @@ def list_latest_checkpoints_for_accounts(
     return latest
 
 
-def upsert_checkpoints(rows: list[dict]) -> list[dict]:
+def upsert_checkpoints(rows: list[dict], revision: int) -> list[dict]:
     if not rows:
         return []
-    response = (
-        get_supabase()
-        .table("fifo_checkpoints")
-        .upsert(rows, on_conflict="account,ticker,as_of_date")
-        .execute()
-    )
-    return response.data or rows
+    from repositories.summary_cache import CacheRevisionChanged
+    if not get_supabase().rpc("write_fifo_checkpoints", {"p_revision": revision, "p_rows": rows}).execute().data:
+        raise CacheRevisionChanged("交易在結算期間已更新，稍後重新結算。")
+    return rows
 
 
 def invalidate_from(account: str, ticker: str, from_date: str) -> None:

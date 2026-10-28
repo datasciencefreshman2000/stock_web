@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 from database import get_supabase
-from services.accounts import ACCOUNT_CURRENCY, ACCOUNTS
+from services.accounts import ACCOUNT_CURRENCY, ACCOUNTS, OWN_ACCOUNTS
 
 TAIPEI_TZ = timezone(timedelta(hours=8))
 
@@ -41,7 +41,7 @@ def build_snapshot_rows(summary: dict, snapshot_at: datetime | None = None) -> l
         account_summary = accounts.get(account) or {}
         cash_summary = cash_by_account.get(account) or {}
         market_value_twd = number_value(account_summary.get("market_value_twd"))
-        cash_twd = number_value(cash_summary.get("twd_equivalent"))
+        cash_twd = number_value(account_summary.get("inferred_cash_twd"))
         account_total_twd = number_value(account_summary.get("account_total_twd"))
 
         rows.append(
@@ -70,15 +70,20 @@ def build_snapshot_rows(summary: dict, snapshot_at: datetime | None = None) -> l
                     "cash_twd": cash_twd,
                     "stock_weight": market_value_twd / account_total_twd if account_total_twd > 0 else None,
                     "cash_weight": cash_twd / account_total_twd if account_total_twd > 0 else None,
-                    "cash_by_currency": cash_summary.get("by_currency") or {},
+                    "cash_by_currency": {ACCOUNT_CURRENCY[account]: number_value(account_summary.get("inferred_cash"))},
                 },
                 "payload": account_summary,
                 "updated_at": updated_at,
             }
         )
 
-    total_invested = sum(number_value(value) for value in (summary.get("invested") or {}).values())
-    cash_total = number_value((summary.get("cash") or {}).get("twd_equivalent"))
+    total_invested = sum(number_value(accounts.get(a, {}).get("invested_twd")) for a in OWN_ACCOUNTS) + sum(number_value(row.get("cost_twd")) for row in summary.get("investments", []))
+    cash_total = number_value((summary.get("cash") or {}).get("own_twd_equivalent", (summary.get("cash") or {}).get("twd_equivalent")))
+    cash_total += sum(number_value(accounts.get(a, {}).get("inferred_cash_twd")) for a in OWN_ACCOUNTS) + number_value(summary.get("manual_investment_cash_total"))
+    stocks_total = sum(number_value(accounts.get(a, {}).get("market_value_twd")) for a in OWN_ACCOUNTS) + number_value(summary.get("investment_total"))
+    total_realized = sum(number_value(accounts.get(a, {}).get("realized_pnl_twd")) for a in OWN_ACCOUNTS)
+    total_unrealized = sum(number_value(accounts.get(a, {}).get("unrealized_pnl_twd")) for a in OWN_ACCOUNTS)
+    total_unrealized += sum(number_value(row.get("pnl_twd")) for row in summary.get("investments", []))
     rows.append(
         {
             "snapshot_at": snapshot_at_value,
@@ -90,16 +95,16 @@ def build_snapshot_rows(summary: dict, snapshot_at: datetime | None = None) -> l
             "currency": "TWD",
             "account_total": number_value(summary.get("total_assets")),
             "account_total_twd": number_value(summary.get("total_assets")),
-            "market_value": number_value(summary.get("own_total_assets")),
-            "market_value_twd": number_value(summary.get("own_total_assets")),
+            "market_value": stocks_total,
+            "market_value_twd": stocks_total,
             "cash": cash_total,
             "cash_twd": cash_total,
             "invested": total_invested,
             "invested_twd": total_invested,
-            "realized_pnl": 0,
-            "realized_pnl_twd": 0,
-            "unrealized_pnl": 0,
-            "unrealized_pnl_twd": 0,
+            "realized_pnl": total_realized,
+            "realized_pnl_twd": total_realized,
+            "unrealized_pnl": total_unrealized,
+            "unrealized_pnl_twd": total_unrealized,
             "allocation": {
                 "total_assets": number_value(summary.get("total_assets")),
                 "own_total_assets": number_value(summary.get("own_total_assets")),

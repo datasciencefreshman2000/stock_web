@@ -1,4 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
+import { useRememberedQueryObject } from '../hooks/useRememberedQueryObject'
+import { usePersistentState } from '../hooks/usePersistentState'
 import { Edit3, Trash2 } from 'lucide-react'
 
 import TradeEditForm from '../components/history/TradeEditForm'
@@ -22,13 +24,18 @@ import { money, number, percent } from '../utils/format'
 
 export default function History() {
   const { hideAmounts } = usePrivacy()
-  const [account, setAccount] = useState(ACCOUNTS[0])
-  const [filters, setFilters] = useState(() => ({ ticker: '', ...rangeFilters('7d') }))
-  const [editingId, setEditingId] = useState('')
-  const [editForm, setEditForm] = useState(null)
+  const [search, setSearch] = useRememberedQueryObject('history-search', { account: ACCOUNTS[0], ticker: '', ...rangeFilters('7d') })
+  const account = HISTORY_ACCOUNT_OPTIONS.some(item => item.value === search.account) ? search.account : ACCOUNTS[0]
+  const filters = useMemo(() => ({ ticker: search.ticker, start_date: search.start_date, end_date: search.end_date }), [search.ticker, search.start_date, search.end_date])
+  const setAccount = value => setSearch(current => ({ ...current, account: value }))
+  const setFilters = value => setSearch(current => ({ ...current, ...(typeof value === 'function' ? value(filters) : value) }))
+  const [debouncedFilters, setDebouncedFilters] = useState(filters)
+  useEffect(() => { const timer = setTimeout(() => setDebouncedFilters(filters), 300); return () => clearTimeout(timer) }, [filters])
+  const [editingId, setEditingId] = usePersistentState('history-edit-id', '')
+  const [editForm, setEditForm] = usePersistentState('history-edit', null)
   const [savingId, setSavingId] = useState('')
   const [actionError, setActionError] = useState('')
-  const { data, error, isLoading: loading } = useTradesQuery(account, filters)
+  const { data, error, isLoading: loading, fetchNextPage, hasNextPage, isFetchingNextPage } = useTradesQuery(account, debouncedFilters)
   const summaryQuery = useSummaryQuery()
   const { update: updateTrade, remove: removeTrade } = useTradeMutations()
   const accountSummaries = summaryQuery.data?.accounts || {}
@@ -132,6 +139,7 @@ export default function History() {
             ['3m', '三個月'],
             ['1y', '一年'],
             ['ytd', '年內交易'],
+            ['all', '全部日期'],
           ].map(([key, label]) => (
             <button
               key={key}
@@ -145,10 +153,13 @@ export default function History() {
         </div>
       </section>
 
+      <div className="flex items-center justify-between text-xs text-slate-400"><span>已載入 {trades.length} 筆交易</span><button type="button" onClick={() => setFilters({ ticker: '', ...rangeFilters('all') })} className="rounded border border-line px-3">清除篩選</button></div>
+      {!loading && !error && !trades.length ? <p role="status" className="rounded border border-line p-5 text-slate-300">沒有符合目前帳戶與日期條件的交易。可選全部日期或清除篩選。</p> : null}
       {loading ? <LoadingBlock label="正在讀取交易紀錄" /> : null}
       {error ? <ErrorBlock error={error} /> : null}
       {actionError ? <div className="rounded-md border border-rose-900/60 bg-rose-950/40 px-4 py-3 text-sm text-rose-200">{actionError}</div> : null}
 
+      {hasNextPage ? <button type="button" disabled={isFetchingNextPage} onClick={() => fetchNextPage()} className="rounded border border-sky-500 p-3 text-sky-100">{isFetchingNextPage ? '載入中…' : '載入更多交易'}</button> : null}
       {!loading && !error ? (
         <div className="overflow-hidden rounded-md border border-line bg-surface">
           <div className="divide-y divide-line sm:hidden">

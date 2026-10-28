@@ -2,6 +2,8 @@
 
 個人投資組合追蹤系統。前端使用 React + Vite，後端使用 FastAPI，資料存在 Supabase，股價與匯率由 Finnhub 取得。
 
+2026-10-28 帳務可靠性與操作流程已更新。雙向台幣／美股換匯、修正對照及協調上線方式見 [本次修正說明](docs/fixes_2026-10-28.md)。新程式需要同次套用 `supabase/migrations/20261028100854_reliable_ledger.sql`，不要只部署其中一邊。
+
 ## 專案結構
 
 ```text
@@ -27,11 +29,11 @@ uvicorn main:app --reload --port 8000
 
 ```bash
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
-> 新增了 `@tanstack/react-query` 相依，第一次拉到這版請務必先跑一次 `npm install`。
+使用 lockfile 安裝已驗證版本；前端建置需要 Node.js 22.12 以上。
 
 請先複製 `.env.example` 成根目錄的 `.env`，並填入 Supabase 與 Finnhub 設定。
 
@@ -52,7 +54,7 @@ python scripts/hash_password.py
 
 ## 資料刷新流程
 
-刷新責任集中在排程與手動刷新端點，所有 GET 端點一律只讀快取：
+報價刷新主要由排程與手動刷新負責。GET 優先讀取與目前資料 revision、台北估值日期相符的快取；未命中會重建摘要及各帳戶持倉，並只補抓尚無價格的標的（有退避），不因舊報價而每次重抓。
 
 | 端點 | 誰呼叫 | 做什麼 |
 |------|--------|--------|
@@ -74,22 +76,25 @@ python scripts/hash_password.py
 - `APP_PASSWORD_HASH`、`JWT_SECRET`（見上方「網站登入」）
 - `CRON_SECRET`
 
-Supabase 需要先建立 `trades`、`manual_values`、`price_cache`、`cash_accounts`、`manual_investments`，欄位可參考 `backend/sql/schema.sql`。
+新 Supabase 空資料庫執行 `python backend/scripts/database_setup.py` 產生完整的 `tmp/database_setup.sql`，再於 SQL Editor 執行產出內容。此腳本本身不連資料庫。既有資料庫依本次修正說明套用新增 migration，保留原資料。
 
 ## 測試
 
 ```bash
-cd backend
-python -m pytest tests/ -q
+python -m pytest backend/tests -q
+npm ci --prefix frontend
+npm test --prefix frontend
+npm run test:db --prefix frontend
+npm run build --prefix frontend
 ```
 
-`tests/test_settlement.py` 有一條關鍵不變式：**從 checkpoint 續算的結果必須等於全量重算**。
+Python 測試需先安裝 `backend/requirements.txt` 與 pytest。`backend/tests/test_settlement.py` 有一條關鍵不變式：**從 checkpoint 續算的結果必須等於全量重算**（股利目前不在本次修正範圍）。
 只要這條測試通過，FIFO checkpoint 就只是效能優化，不會影響金額正確性。
 
 ## Supabase 連線方式
 
 1. 到 Supabase 專案的 SQL Editor。
-2. 執行 `backend/sql/schema.sql` 建立資料表；舊資料庫則依序補跑 `backend/sql/migrations/` 內的 SQL。
+2. 全新空環境執行上述產出的 `tmp/database_setup.sql`；它整合 baseline 與 migrations，排除舊個人範例餘額。既有已建置環境只套用新增的 `supabase/migrations/`，先核對本次修正說明的維護時段步驟。
 3. 到 Settings → API 複製 Project URL 與 service_role key。
 4. 寫入根目錄 `.env`：
 

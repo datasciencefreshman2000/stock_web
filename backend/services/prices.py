@@ -78,6 +78,7 @@ class PriceContext:
             "fetched": 0,
             "cached": 0,
             "failed": 0,
+            "failed_symbols": [],
             "missing": 0,
             "providers": [],
             "started_at": None,
@@ -230,6 +231,8 @@ async def fetch_prices_batch(
         price = fetched.get(ticker)
         if price is None:
             context.stats["failed"] += 1
+            if symbol not in context.stats["failed_symbols"]:
+                context.stats["failed_symbols"].append(symbol)
             stale = context.db_cache.get(symbol)
             results[ticker] = float(stale["price"]) if stale and stale.get("price") is not None else None
             if stale is None:
@@ -257,6 +260,7 @@ async def fetch_prices_batch(
         )
 
     upsert_price_cache_rows(rows)
+    context.db_cache.update({row["symbol"]: row for row in rows})
     context.stats["finished_at"] = _now_iso()
     return results
 
@@ -414,4 +418,10 @@ def get_price_status(context: PriceContext | None = None) -> dict:
     }
     if context:
         status.update(context.stats)
+        details = [{"symbol": symbol, "fetched_at": row.get("fetched_at"), "has_price": row.get("price") is not None}
+                   for symbol, row in context.db_cache.items()]
+        status["quotes"] = details
+        timestamps = [item["fetched_at"] for item in details if item.get("fetched_at") and item["has_price"]]
+        status["oldest_quote_at"] = min(timestamps) if timestamps else None
+    status["rate_is_estimated"] = not bool(stored and stored.get("rate"))
     return status

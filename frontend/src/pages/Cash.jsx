@@ -3,6 +3,8 @@ import { ChevronDown, ChevronUp, PenLine, ReceiptText } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import { api } from '../api/client'
+import { saveQueue, useAllSaves } from '../hooks/useSaveQueue'
+import { usePersistentState } from '../hooks/usePersistentState'
 import AccountInvestedPanel from '../components/cash/AccountInvestedPanel'
 import CashBalanceChart from '../components/cash/CashBalanceChart'
 import CapitalMovementPanel from '../components/cash/CapitalMovementPanel'
@@ -26,33 +28,29 @@ export default function Cash() {
   // 保留舊有的 { data, error, loading } 形狀，下面的畫面程式碼不用改
   const manual = { data: manualQuery.data, error: manualQuery.error, loading: manualQuery.isLoading }
   const summary = { data: summaryQuery.data, error: summaryQuery.error, loading: summaryQuery.isLoading }
-  const [drafts, setDrafts] = useState({})
+  const [drafts, setDrafts] = usePersistentState('cash-corrections', {})
+  const saves = useAllSaves()
   const [statuses, setStatuses] = useState({})
   const [selectedRows, setSelectedRows] = useState(new Set())
   const [zeroRowsOpen, setZeroRowsOpen] = useState(false)
-  const [summaryOpen, setSummaryOpen] = useState(false)
+  const [summaryOpen, setSummaryOpen] = useState(true)
   const [accountsOpen, setAccountsOpen] = useState(false)
-  const timersRef = useRef({})
-  const processingRef = useRef(false)
-  const queueRef = useRef(new Map())
+
 
   useEffect(() => {
     if (!manual.data?.cash) return
-    setDrafts(Object.fromEntries(manual.data.cash.map((row) => [row.id, row])))
+    setStatuses({})
+    setDrafts(current => Object.fromEntries(Object.entries(current).filter(([key, draft]) => {
+      const row = manual.data.cash.find(row => row.id === key || (row.name === draft.name && row.currency === draft.currency))
+      return !row || Number(row.amount) !== Number(draft.amount)
+    })))
   }, [manual.data])
-
-  useEffect(() => {
-    return () => {
-      Object.values(timersRef.current).forEach(clearTimeout)
-    }
-  }, [])
 
   const usdRate = summary.data?.usd_rate || 31.316
   const rows = manual.data?.cash || []
   const grouped = useMemo(() => {
     const map = new Map(BASE_ROWS.map((name) => [name, { name, TWD: null, USD: null }]))
     rows
-      .filter((row) => row.name !== '新增外幣')
       .forEach((row) => {
         if (!map.has(row.name)) map.set(row.name, { name: row.name, TWD: null, USD: null })
         const currency = row.currency || 'TWD'
@@ -75,87 +73,30 @@ export default function Cash() {
     setStatuses((current) => ({ ...current, [key]: status }))
   }
 
-  async function processQueue() {
-    if (processingRef.current) return
-    processingRef.current = true
-
-    let saved = 0
-    while (queueRef.current.size > 0) {
-      const [key, job] = queueRef.current.entries().next().value
-      queueRef.current.delete(key)
-      setStatus(key, 'saving')
-      try {
-        if (job.row?.id) {
-          await api.updateCash(job.row.id, job.amount, job.currency)
-          setDrafts((current) => ({
-            ...current,
-            [job.row.id]: { ...job.row, amount: job.amount, currency: job.currency },
-          }))
-        } else {
-          const response = await api.createCash({
-            name: job.name,
-            account: '',
-            category: '現金',
-            currency: job.currency,
-            amount: job.amount,
-          })
-          const created = response.cash
-          setDrafts((current) => {
-            const next = { ...current, [created.id]: created }
-            delete next[key]
-            return next
-          })
-          job.item[job.currency] = created
-        }
-        setStatus(key, 'saved')
-        saved += 1
-      } catch {
-        setStatus(key, 'error')
-      }
-    }
-
-    processingRef.current = false
-
-    // 整個佇列清空之後才失效一次。
-    // 先前是每存一個欄位就失效，改 5 個欄位會觸發 5 輪完整重算。
-    if (saved > 0) deferred.schedule('cash')
-  }
-
-  function enqueueSave(item, currency, rawValue) {
-    const key = cellKey(item, currency)
-    if (['-', '.', '-.'].includes(String(rawValue))) {
-      clearTimeout(timersRef.current[key])
-      setStatus(key, 'editing')
-      return
-    }
-    const amount = Number(rawValue || 0)
-    if (!Number.isFinite(amount)) return
-    clearTimeout(timersRef.current[key])
-    setStatus(key, 'editing')
-    timersRef.current[key] = setTimeout(() => {
-      queueRef.current.set(key, {
-        key,
-        item,
-        row: item[currency],
-        name: item.name,
-        currency,
-        amount,
-      })
-      setStatus(key, 'pending')
-      processQueue()
-    }, DEBOUNCE_MS)
-  }
-
   function updateCell(item, currency, rawValue) {
     const key = cellKey(item, currency)
-    setDrafts((current) => ({
-      ...current,
-      [key]: {
-        ...(item[currency] || { name: item.name, currency }),
-        amount: rawValue,
-      },
-    }))
-    enqueueSave(item, currency, rawValue)
+    const original = item[currency]
+    setDrafts(current => ({ ...current, [key]: {
+      ...(current[key] || original || { name: item.name, currency }), amount: rawValue,
+      expected_updated_at: current[key]?.expected_updated_at ?? original?.updated_at,
+      operation_id: crypto.randomUUID(),
+    } }))
+    setStatus(key, 'editing')
+  }
+
+  function saveCorrections() {
+    const entries = Object.entries(drafts)
+    if (!entries.length) return
+    if (entries.some(([, row]) => !Number.isFinite(Number(row.amount)) || ['-', '.', '-.'].includes(String(row.amount)))) {
+      window.alert('請先完成金額輸入。'); return
+    }
+    for (const [key, row] of entries) {
+      const existing = rows.find(item => item.id === key)
+      saveQueue.enqueue(existing ? 'cash' : 'cash-create', { ...row, id: existing?.id,
+        amount: Number(row.amount), currency: row.currency, reason: '現金頁餘額校正',
+      }, `${row.name} ${row.currency} 餘額校正`)
+      setStatus(key, 'saving')
+    }
   }
 
   function toggleSelected(name) {
@@ -168,6 +109,7 @@ export default function Cash() {
   }
 
   function resetSelectedAccounts() {
+    if (!window.confirm(`將選取的 ${selectedRows.size} 個帳戶台幣與美金填為 0？按儲存校正後會保留調整紀錄。`)) return
     sortedGrouped
       .filter((item) => selectedRows.has(item.name))
       .forEach((item) => {
@@ -235,7 +177,7 @@ export default function Cash() {
         </button>
         <div className="grid grid-cols-2 gap-2 sm:contents">
           <div className="grid gap-1 text-[11px] text-slate-500 sm:block">
-            <span className="sm:hidden">台幣</span>
+            <span className="sm:hidden">台幣淨額</span>
             <MobileNumericInput
               value={twd}
               onChange={(value) => updateCell(item, 'TWD', value)}
@@ -261,7 +203,7 @@ export default function Cash() {
         </div>
         {rowStatus ? (
           <div className={`text-right text-xs sm:col-span-3 ${rowStatus === 'error' ? 'text-rose-300' : 'text-slate-500'}`}>
-            {rowStatus === 'editing' ? '編輯中' : rowStatus === 'pending' ? '等待儲存' : rowStatus === 'saving' ? '儲存中' : '儲存失敗'}
+            {rowStatus === 'editing' ? '未儲存校正' : '請查看上方儲存狀態'}
           </div>
         ) : null}
       </div>
@@ -287,7 +229,7 @@ export default function Cash() {
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">現金</h1>
-          <p className="mt-1 text-sm text-slate-400">USD/TWD {Number(usdRate || 0).toFixed(2)}</p>
+          <p className="mt-1 text-sm text-slate-400">USD/TWD {Number(usdRate || 0).toFixed(2)} · 修改餘額後請儲存校正</p>
         </div>
         <div className="grid w-full grid-cols-2 items-center gap-2 sm:flex sm:w-auto">
           {deferred.pending ? (
@@ -312,6 +254,11 @@ export default function Cash() {
         </div>
       </header>
 
+      {Object.keys(drafts).length ? <div className="flex flex-wrap items-center gap-3 rounded border border-amber-500/40 p-3 text-sm">
+        <span className="flex-1">有 {Object.keys(drafts).length} 個未儲存的餘額校正，草稿已保留。</span>
+        <button type="button" onClick={saveCorrections} disabled={saves.some(job => job.state !== 'failed' && ['cash','cash-create'].includes(job.kind))} className="rounded bg-sky-600 px-3 py-2 disabled:opacity-50">儲存餘額校正</button>
+        <button type="button" onClick={() => { if(window.confirm('放棄尚未送出的餘額校正？')) setDrafts({}) }} className="rounded border border-line px-3 py-2">取消草稿</button>
+      </div> : null}
       <section className={`grid gap-3 ${summaryOpen ? 'sm:grid-cols-3' : ''}`}>
         <button
           type="button"
@@ -320,7 +267,7 @@ export default function Cash() {
           aria-expanded={summaryOpen}
         >
           <span>
-            <span className="block text-sm text-slate-300">台幣</span>
+            <span className="block text-sm text-slate-300">台幣淨額</span>
             <span className="mt-2 block text-3xl font-semibold tabular-nums text-white">
               {hideAmounts ? maskAmount(money(totals.twd)) : money(totals.twd)}
             </span>
@@ -335,6 +282,7 @@ export default function Cash() {
         ) : null}
       </section>
 
+      <p className="text-xs text-slate-400">淨額包含應收款與負債；應收款不等於可立即使用的現金。首次設定請先核對銀行餘額，再設定投資帳戶淨入金。</p>
       <CashBalanceChart
         data={[
           ...sortedGrouped

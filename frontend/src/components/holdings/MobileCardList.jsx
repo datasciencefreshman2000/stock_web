@@ -1,5 +1,5 @@
 import Metric from './Metric'
-import { money, percent, pnlClass } from '../../utils/format'
+import { money, number, percent, pnlClass } from '../../utils/format'
 
 export default function MobileCardList({ holdings, account, currency, hideAmounts, activeTicker, onToggle, renderDetail }) {
   return (
@@ -20,6 +20,8 @@ export default function MobileCardList({ holdings, account, currency, hideAmount
             </div>
           </button>
           <div className="grid grid-cols-2 gap-2 text-xs">
+            <Metric label="股數" value={hideAmounts ? '••••' : number(row.qty, 4)} inline />
+            <Metric label="現價" value={hideAmounts ? '••••' : money(row.current_price, currency)} inline />
             <Metric label="市值" value={hideAmounts ? '••••' : money(row.market_value, currency)} inline />
             <Metric label="損益" value={percent(row.pnl_pct)} accent={pnlClass(row.pnl)} inline />
           </div>

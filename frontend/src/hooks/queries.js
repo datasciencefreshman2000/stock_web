@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, useInfiniteQuery } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { api } from '../api/client'
@@ -7,11 +7,12 @@ import { queryKeys } from '../lib/queryClient'
 // --- 讀取 -----------------------------------------------------------------
 
 export function useSummaryQuery() {
-  return useQuery({ queryKey: queryKeys.summary, queryFn: api.getSummary })
+  return useQuery({ queryKey: queryKeys.summary, queryFn: api.getSummary, refetchInterval: 120000 })
 }
 
 export function usePortfolioQuery(account, enabled = true) {
   return useQuery({
+    refetchInterval: 120000,
     queryKey: queryKeys.portfolio(account),
     queryFn: () => api.getPortfolio(account),
     enabled,
@@ -28,9 +29,12 @@ export function useBuyLotsQuery(account, ticker) {
 }
 
 export function useTradesQuery(account, params = {}, enabled = true) {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: queryKeys.trades(account, params),
-    queryFn: () => api.getTrades(account, params),
+    queryFn: ({ pageParam }) => api.getTrades(account, { ...params, cursor: pageParam, limit: 100 }),
+    initialPageParam: null,
+    getNextPageParam: lastPage => lastPage.next_cursor || undefined,
+    select: data => ({ ...data, trades: data.pages.flatMap(page => page.trades || []) }),
     enabled,
   })
 }

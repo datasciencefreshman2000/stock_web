@@ -3,12 +3,12 @@ import { createContext, useContext, useMemo, useState } from 'react'
 const PrivacyContext = createContext(null)
 
 export function PrivacyProvider({ children }) {
-  const [hideAmounts, setHideAmounts] = useState(() => localStorage.getItem('hideAmounts') === 'true')
+  const [hideAmounts, setHideAmounts] = useState(() => { try { return localStorage.getItem('hideAmounts') === 'true' } catch { return false } })
 
   function toggleHideAmounts() {
     setHideAmounts((current) => {
       const next = !current
-      localStorage.setItem('hideAmounts', String(next))
+      try { localStorage.setItem('hideAmounts', String(next)) } catch { /* memory-only */ }
       return next
     })
   }
