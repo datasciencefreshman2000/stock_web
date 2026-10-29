@@ -123,6 +123,7 @@ async function request(path, options = {}) {
 }
 
 export const api = {
+  recordCreditPayment: data => request('/manual/credit-card-payments', { method: 'POST', body: JSON.stringify(data) }),
   health: () => request('/health'),
 
   // --- 認證 ---

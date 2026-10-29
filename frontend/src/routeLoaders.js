@@ -7,5 +7,7 @@ export const routeLoaders = {
 }
 
 export function preloadRoute(path) {
-  return routeLoaders[path]?.()
+  // Hover/touch preloads are best-effort. A failed preload must not become
+  // an unhandled rejection; normal navigation retains its error boundary.
+  return routeLoaders[path]?.().catch(() => undefined)
 }

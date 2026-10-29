@@ -9,6 +9,12 @@ def get_data_revision() -> int:
     return int(result)
 
 
+def operation_exists(operation_id: str) -> bool:
+    # Replay still goes through the RPC, which checks the original request body.
+    return bool(get_supabase().table('app_operations').select('operation_id')
+                .eq('operation_id', operation_id).limit(1).execute().data)
+
+
 def atomic_write(action: str, payload: dict | None = None, *, record_id: str | None = None,
                  operation_id: str | None = None, revision: int | None = None,
                  effects: list[dict] | None = None) -> dict:

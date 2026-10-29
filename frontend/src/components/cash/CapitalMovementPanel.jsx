@@ -23,6 +23,7 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
   const [panelOpen, setPanelOpen] = useState(false)
   const [attention, setAttention] = useState(false)
   const [mode, setMode] = usePersistentState('movement-mode', 'income')
+  const previousMode = useRef(mode)
 
   // 外部（例如現金頁的「記帳」按鈕）要求展開並切到指定模式。
   // 用遞增的 openSignal 當觸發，這樣連按也有效。
@@ -45,6 +46,7 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
   const [exchange, setExchange] = useState(false)
   const [toAmountManual, setToAmountManual] = usePersistentState('movement-manual-destination', false)
   const [noteOpen, setNoteOpen] = useState(false)
+  const [desktopKeypadOpen, setDesktopKeypadOpen] = useState(false)
   const [form, setForm] = usePersistentState('movement', () => ({
     movement_date: today(),
     income_source: INCOME_SOURCES[0],
@@ -61,6 +63,13 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
     affects_balance: true,
   }))
   const [message, setMessage] = useState('')
+  useEffect(() => {
+    if (previousMode.current === mode) return
+    previousMode.current = mode
+    setForm(current => ({ ...current, amount: '', to_amount: '', note: '', operation_id: crypto.randomUUID() }))
+    setToAmountManual(false)
+    setMessage('')
+  }, [mode])
   // 送出不擋畫面：按下去就排隊，表單立刻清空可以打下一筆。
   // 全站佇列依序送出；跨裝置的並行與重試另由資料庫交易保護。
   const queue = useSaveQueue(api.createCapitalMovement, () => onSaved?.())
@@ -461,13 +470,14 @@ export default function CapitalMovementPanel({ bankNames, positiveBankNames, onS
 
             {mode === 'expense' ? (
               <div className="hidden sm:col-span-2 sm:block lg:col-span-6">
-                <NumericKeypad
+                <button type="button" aria-expanded={desktopKeypadOpen} onClick={() => setDesktopKeypadOpen(open => !open)} className="mb-2 rounded border border-line px-3 py-2 text-xs text-slate-300">{desktopKeypadOpen ? '收合數字鍵盤' : '開啟數字鍵盤'}</button>
+                {desktopKeypadOpen ? <NumericKeypad
                   value={form.amount}
                   onChange={(value) => update('amount', normalizeAmount(value))}
                   masked={hideAmounts}
                 currency={form.currency}
                   onCurrencyChange={ACCOUNT_CURRENCY[form.from_bucket] && mode === 'transfer' ? undefined : updateSourceCurrency}
-                />
+                /> : null}
               </div>
             ) : null}
 

@@ -391,7 +391,7 @@ export default function CashLedger() {
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-xs text-slate-500">{row.movement_date}</span>
-                          <span className="rounded-sm bg-panel px-1.5 py-0.5 text-[11px] text-slate-300">{TYPE_LABELS[type]}</span>
+                          <span className="rounded-sm bg-panel px-1.5 py-0.5 text-[11px] text-slate-300">{row.to_bucket === CREDIT_CARD_DEBT && row.from_bucket ? '信用卡繳款' : TYPE_LABELS[type]}</span>
                           {details.tags.map((tag) => <span key={tag} className="rounded-full border border-sky-500/30 px-2 py-0.5 text-[10px] text-sky-200">{tag}</span>)}
                         </div>
                         <div className="mt-1 text-sm text-slate-200">

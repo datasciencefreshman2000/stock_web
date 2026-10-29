@@ -71,7 +71,7 @@ export default function Holdings() {
   const isManual = tab === ACCOUNT_TABS[3]
   const portfolioAccount = isManual ? ACCOUNT_TABS[0] : tab
   const portfolioQuery = usePortfolioQuery(portfolioAccount, !isManual)
-  const manualQuery = useManualQuery()
+  const manualQuery = useManualQuery(isManual)
 
   // 統一成舊有的 { data, error, loading, reload } 形狀，下面的畫面程式碼不用改
   const portfolio = { data: portfolioQuery.data, error: portfolioQuery.error, loading: portfolioQuery.isLoading, reload: portfolioQuery.refetch }
@@ -179,14 +179,14 @@ export default function Holdings() {
       <ValuationNotice data={dashboard} />
       {dashboard.cash_warning ? <p role="alert" className="text-amber-200">{dashboard.cash_warning}</p> : null}
       <p className="text-xs text-slate-400">損益含買賣費用，不含股利；報酬比例以淨入金為分母，入出金會改變比例，並非年化報酬。點指標可展開細項。</p>
-      {active.loading ? <LoadingBlock label="正在讀取持倉資料" /> : null}
-      {active.error ? <ErrorBlock error={active.error} /> : null}
+      {active.loading && !active.data ? <LoadingBlock label="正在讀取持倉資料" /> : null}
+      {active.error ? <div className="grid gap-2">{active.data ? <p className="text-sm text-amber-200">更新暫時失敗，以下保留上次成功讀取的資料。</p> : null}<ErrorBlock error={active.error} onRetry={active.reload} /></div> : null}
 
-      {!active.loading && !active.error && isManual ? (
+      {active.data && isManual ? (
         <ManualValueEditor investments={manual.data?.investments || []} onSaved={() => invalidateMoney('manual')} />
       ) : null}
 
-      {!active.loading && !active.error && !isManual ? (
+      {active.data && !isManual ? (
         <>
           <section className="grid gap-3">
             <div className="summary-single-enter grid grid-cols-2 gap-3">

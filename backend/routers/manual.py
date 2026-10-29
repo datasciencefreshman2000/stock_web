@@ -15,7 +15,8 @@ from repositories.manual import (
     list_manual_investments,
 )
 from repositories.operations import atomic_write
-from services.movements import write_movement
+from services.movements import write_movement, write_credit_payment
+from models import CreditCardPaymentCreate
 from repositories.manual import list_balance_adjustments
 
 # 整個 router 都需要登入
@@ -137,6 +138,11 @@ def remove_capital_movement_option(option_id: str) -> dict:
 def add_capital_movement(payload: CapitalMovementCreate) -> dict:
     movement = write_movement("movement.create", payload.model_dump(mode="json", exclude_none=True))
     return {"success": True, "movement": movement}
+
+
+@router.post('/credit-card-payments')
+def add_credit_card_payment(payload: CreditCardPaymentCreate) -> dict:
+    return {'success': True, 'movement': write_credit_payment(payload.model_dump(mode='json'))}
 
 
 @router.patch("/capital-movements/{movement_id}")

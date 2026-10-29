@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronUp, PenLine, ReceiptText } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
@@ -6,24 +6,24 @@ import { api } from '../api/client'
 import { saveQueue, useAllSaves } from '../hooks/useSaveQueue'
 import { usePersistentState } from '../hooks/usePersistentState'
 import AccountInvestedPanel from '../components/cash/AccountInvestedPanel'
-import CashBalanceChart from '../components/cash/CashBalanceChart'
+const CashBalanceChart = lazy(() => import('../components/cash/CashBalanceChart'))
 import CapitalMovementPanel from '../components/cash/CapitalMovementPanel'
+import CreditCardPaymentPanel from '../components/cash/CreditCardPaymentPanel'
 import MobileNumericInput from '../components/cash/MobileNumericInput'
-import { BANK_ROWS, BASE_ROWS, DEBOUNCE_MS } from '../components/cash/constants'
+import { BANK_ROWS, BASE_ROWS } from '../components/cash/constants'
 import { ErrorBlock, LoadingBlock } from '../components/StateBlock'
 import SummaryCard from '../components/SummaryCard'
 import { maskAmount, usePrivacy } from '../context/PrivacyContext'
-import { useDeferredInvalidate, useInvalidateMoney, useManualQuery, useSummaryQuery } from '../hooks/queries'
+import { useManualQuery, useSummaryQuery } from '../hooks/queries'
 import { money } from '../utils/format'
 
 export default function Cash() {
   const { hideAmounts } = usePrivacy()
   const manualQuery = useManualQuery()
   const summaryQuery = useSummaryQuery()
-  const invalidateMoney = useInvalidateMoney()
-  // 連續記帳時不要每筆都等重算，停手 1.5 秒後才合併觸發一次
-  const deferred = useDeferredInvalidate(1500)
+  const [chartOpen, setChartOpen] = useState(false)
   const [ledgerSignal, setLedgerSignal] = useState(0)
+  const [paymentSignal, setPaymentSignal] = useState(0)
 
   // 保留舊有的 { data, error, loading } 形狀，下面的畫面程式碼不用改
   const manual = { data: manualQuery.data, error: manualQuery.error, loading: manualQuery.isLoading }
@@ -124,11 +124,6 @@ export default function Cash() {
     return twd + usd * usdRate
   }
 
-  // 記帳存檔後只排程一次延遲失效，連續輸入時會自動合併
-  function refreshMoneyNow() {
-    deferred.schedule('movement')
-  }
-
   function openLedgerEntry() {
     setLedgerSignal((n) => n + 1)
   }
@@ -201,6 +196,7 @@ export default function Cash() {
             />
           </div>
         </div>
+        {item.name === '信用卡欠錢' ? <button type="button" onClick={() => setPaymentSignal(value => value + 1)} className="rounded border border-amber-500/60 px-3 py-2 text-xs text-amber-200 sm:col-span-3">繳信用卡</button> : null}
         {rowStatus ? (
           <div className={`text-right text-xs sm:col-span-3 ${rowStatus === 'error' ? 'text-rose-300' : 'text-slate-500'}`}>
             {rowStatus === 'editing' ? '未儲存校正' : '請查看上方儲存狀態'}
@@ -232,9 +228,6 @@ export default function Cash() {
           <p className="mt-1 text-sm text-slate-400">USD/TWD {Number(usdRate || 0).toFixed(2)} · 修改餘額後請儲存校正</p>
         </div>
         <div className="grid w-full grid-cols-2 items-center gap-2 sm:flex sm:w-auto">
-          {deferred.pending ? (
-            <span className="col-span-2 text-right text-[11px] text-slate-500 sm:col-span-1">同步中…</span>
-          ) : null}
           <button
             type="button"
             onClick={openLedgerEntry}
@@ -283,7 +276,12 @@ export default function Cash() {
       </section>
 
       <p className="text-xs text-slate-400">淨額包含應收款與負債；應收款不等於可立即使用的現金。首次設定請先核對銀行餘額，再設定投資帳戶淨入金。</p>
-      <CashBalanceChart
+      <CreditCardPaymentPanel rows={rows} hasCorrections={Object.keys(drafts).length > 0} openSignal={paymentSignal} />
+      <section className="overflow-hidden rounded-md border border-line bg-surface">
+      <button type="button" aria-expanded={chartOpen} onClick={() => setChartOpen(open => !open)} className="flex w-full items-center justify-between bg-panel px-4 py-3 text-left text-sm">
+        <span>查看現金、應收款與負債分布</span>{chartOpen ? <ChevronUp size={17} /> : <ChevronDown size={17} />}
+      </button>
+      {chartOpen ? <Suspense fallback={<LoadingBlock label="正在載入分布圖" />}><CashBalanceChart
         data={[
           ...sortedGrouped
             .map((item) => ({ name: item.name, value: accountTotal(item) }))
@@ -292,15 +290,16 @@ export default function Cash() {
         ]}
       />
 
+      </Suspense> : null}
+      </section>
       <CapitalMovementPanel
         bankNames={bankNames}
         positiveBankNames={positiveBankNames}
         usdRate={usdRate}
-        onSaved={refreshMoneyNow}
         openSignal={ledgerSignal}
         openMode="expense"
       />
-      <AccountInvestedPanel values={manual.data?.values || []} onSaved={refreshMoneyNow} />
+      <AccountInvestedPanel values={manual.data?.values || []} />
 
       <section className="overflow-hidden rounded-md border border-line bg-surface">
         <div className="flex items-center gap-2 bg-panel px-4 py-3">

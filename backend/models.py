@@ -161,6 +161,28 @@ class CapitalMovementUpdate(CapitalMovementCreate):
     pass
 
 
+class CreditCardPaymentCreate(WriteRequest):
+    source_id: UUID
+    source_name: str = Field(min_length=1)
+    debt_id: UUID
+    currency: Currency = 'TWD'
+    amount: float = Field(gt=0)
+    repayment_mode: Literal['all', 'partial'] = 'partial'
+    movement_date: Date
+    note: str = Field(default='', max_length=200)
+
+    @model_validator(mode='after')
+    def validate_payment(self):
+        from services.dates import today
+        from services.money import decimal
+        if self.movement_date.isoformat() > today():
+            raise ValueError('請填寫今天或之前的實際繳款日期。')
+        amount = decimal(self.amount)
+        if self.repayment_mode == 'partial' and amount != amount.quantize(decimal('0.01')):
+            raise ValueError('繳款金額最多兩位小數。')
+        return self
+
+
 class CapitalMovementOptionCreate(BaseModel):
     category: str = Field(min_length=1)
     label: str = Field(min_length=1)

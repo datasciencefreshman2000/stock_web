@@ -48,8 +48,8 @@ export function useTradeTickersQuery(account) {
   })
 }
 
-export function useManualQuery() {
-  return useQuery({ queryKey: queryKeys.manual, queryFn: api.getManual })
+export function useManualQuery(enabled = true) {
+  return useQuery({ queryKey: queryKeys.manual, queryFn: api.getManual, enabled })
 }
 
 export function useCapitalMovementsQuery(month) {

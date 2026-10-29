@@ -6,13 +6,16 @@ let storage
 try { storage = localStorage } catch { /* unavailable */ }
 export const saveQueue = createSaveQueue({ storage,
   send(kind, payload) {
+    if (kind === 'credit-payment') return api.recordCreditPayment(payload)
     if (kind === 'movement') return api.createCapitalMovement(payload)
     if (kind === 'cash') return api.updateCash(payload.id, payload.amount, payload.currency, payload)
     if (kind === 'cash-create') return api.createCash(payload)
     if (kind === 'value') return api.updateManualValue(payload.key, payload.value, payload)
     throw new Error('未知的儲存項目')
   },
-  onSaved: () => queryClient.invalidateQueries(),
+  onSaved: () => queryClient.invalidateQueries({ predicate: query =>
+    ['summary', 'portfolio', 'manual', 'capital-movements', 'balance-adjustments'].includes(query.queryKey[0]),
+  }),
 })
 export function useSaveQueue(_sender, _onDrained, kind = 'movement') {
   const jobs = useSyncExternalStore(saveQueue.subscribe, saveQueue.getSnapshot)
