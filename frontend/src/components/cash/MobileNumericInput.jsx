@@ -84,7 +84,7 @@ export default function MobileNumericInput({
         aria-haspopup="dialog"
         aria-expanded={open}
       >
-        {shownValue !== '' ? shownValue : '點選輸入金額'}
+        {shownValue !== '' ? shownValue : '點選輸入'}
       </button>
       <input
         ref={inputRef}
@@ -110,7 +110,7 @@ export default function MobileNumericInput({
                 aria-label="關閉數字鍵盤"
               />
               <div
-                className="keypad-sheet-enter absolute inset-x-0 bottom-0 rounded-t-lg border border-line bg-surface p-3 shadow-xl"
+                className="keypad-sheet-enter absolute inset-x-0 bottom-0 max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain rounded-t-lg border border-line bg-surface p-3 shadow-xl"
                 style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
               >
                 <div className="mb-3 flex items-center justify-between gap-3">
@@ -121,7 +121,7 @@ export default function MobileNumericInput({
                   <button
                     type="button"
                     onClick={() => setOpen(false)}
-                    className="grid h-10 min-h-0 w-10 shrink-0 place-items-center rounded-md border border-line text-slate-300 active:scale-95"
+                    className="grid h-11 w-11 shrink-0 place-items-center rounded-md border border-line text-slate-300 active:scale-95"
                     aria-label="關閉數字鍵盤"
                     title="關閉數字鍵盤"
                   >

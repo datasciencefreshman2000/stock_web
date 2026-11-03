@@ -21,6 +21,24 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* Keep phone controls readable and reachable, including notched home areas. */
+@media (max-width: 639px) {
+  input:not([type='checkbox']):not([type='radio']), select[class], textarea[class] {
+    font-size: 16px;
+    min-width: 0;
+  }
+  button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  nav[aria-label='主要頁面'] a {
+    min-height: 48px;
+  }
+  .app-content {
+    padding-bottom: calc(7rem + env(safe-area-inset-bottom, 0px));
+  }
+}
+
 html,
 body,
 #root {

@@ -103,7 +103,7 @@ export default function History() {
         <h1 className="text-2xl font-semibold">交易紀錄</h1>
       </header>
 
-      <section className="grid gap-3 rounded-md border border-line bg-surface p-4 sm:grid-cols-4">
+      <section className="grid grid-cols-2 gap-3 rounded-md border border-line bg-surface p-4 sm:grid-cols-4">
         <label className="grid gap-2 text-sm">
           帳戶
           <select
@@ -121,7 +121,7 @@ export default function History() {
         </label>
         <label className="grid gap-2 text-sm">
           代號
-          <input className="rounded-md border border-line bg-[#0b1020] px-3 py-2" value={filters.ticker} onChange={(e) => setFilters((current) => ({ ...current, ticker: e.target.value.toUpperCase() }))} />
+          <input autoCapitalize="characters" autoCorrect="off" spellCheck={false} className="rounded-md border border-line bg-[#0b1020] px-3 py-2" value={filters.ticker} onChange={(e) => setFilters((current) => ({ ...current, ticker: e.target.value.toUpperCase() }))} />
         </label>
         <label className="grid gap-2 text-sm">
           起日
@@ -131,7 +131,7 @@ export default function History() {
           迄日
           <input className="rounded-md border border-line bg-[#0b1020] px-3 py-2" type="date" value={filters.end_date} onChange={(e) => setFilters((current) => ({ ...current, end_date: e.target.value }))} />
         </label>
-        <div className="flex flex-wrap gap-2 sm:col-span-4">
+        <div className="col-span-2 flex flex-wrap gap-2 sm:col-span-4">
           {[
             ['1d', '1日'],
             ['7d', '7日'],
@@ -159,7 +159,6 @@ export default function History() {
       {error ? <ErrorBlock error={error} /> : null}
       {actionError ? <div className="rounded-md border border-rose-900/60 bg-rose-950/40 px-4 py-3 text-sm text-rose-200">{actionError}</div> : null}
 
-      {hasNextPage ? <button type="button" disabled={isFetchingNextPage} onClick={() => fetchNextPage()} className="rounded border border-sky-500 p-3 text-sky-100">{isFetchingNextPage ? '載入中…' : '載入更多交易'}</button> : null}
       {!loading && !error ? (
         <div className="overflow-hidden rounded-md border border-line bg-surface">
           <div className="divide-y divide-line sm:hidden">
@@ -327,6 +326,7 @@ export default function History() {
           </div>
         </div>
       ) : null}
+      {hasNextPage ? <button type="button" disabled={isFetchingNextPage} onClick={() => fetchNextPage()} className="rounded border border-sky-500 p-3 text-sky-100">{isFetchingNextPage ? '載入中…' : '載入更多交易'}</button> : null}
     </div>
   )
 }

@@ -252,11 +252,11 @@ export default function Cash() {
         <button type="button" onClick={saveCorrections} disabled={saves.some(job => job.state !== 'failed' && ['cash','cash-create'].includes(job.kind))} className="rounded bg-sky-600 px-3 py-2 disabled:opacity-50">儲存餘額校正</button>
         <button type="button" onClick={() => { if(window.confirm('放棄尚未送出的餘額校正？')) setDrafts({}) }} className="rounded border border-line px-3 py-2">取消草稿</button>
       </div> : null}
-      <section className={`grid gap-3 ${summaryOpen ? 'sm:grid-cols-3' : ''}`}>
+      <section className={`grid gap-3 ${summaryOpen ? 'grid-cols-2 sm:grid-cols-3' : ''}`}>
         <button
           type="button"
           onClick={() => setSummaryOpen((open) => !open)}
-          className="soft-pop flex min-h-[7.5rem] w-full items-center justify-between rounded-md border border-sky-500/50 bg-panel p-4 text-left transition active:scale-[0.99]"
+          className={`soft-pop flex min-h-[7.5rem] w-full items-center justify-between rounded-md border border-sky-500/50 bg-panel p-4 text-left transition active:scale-[0.99] ${summaryOpen ? 'col-span-2 sm:col-span-1' : ''}`}
           aria-expanded={summaryOpen}
         >
           <span>
@@ -309,7 +309,7 @@ export default function Cash() {
             className="flex min-h-0 min-w-0 flex-1 items-center justify-between gap-3 text-left"
             aria-expanded={accountsOpen}
           >
-            <span className="text-sm font-medium text-slate-200">帳戶</span>
+            <span className="text-sm font-medium text-slate-200">帳戶餘額校正</span>
             {accountsOpen ? <ChevronUp size={17} className="text-slate-400" /> : <ChevronDown size={17} className="text-slate-400" />}
           </button>
           {accountsOpen ? (
@@ -325,6 +325,7 @@ export default function Cash() {
         </div>
         {accountsOpen ? (
           <div className="border-t border-line">
+            <p className="px-4 py-3 text-xs text-slate-400">這裡用於期初設定或餘額校正。日常收支、轉帳及繳信用卡請使用上方記帳功能；點帳戶名稱可選取，歸零後仍需儲存校正。</p>
             <div className="hidden grid-cols-[minmax(10rem,1fr)_7rem_7rem] gap-3 border-b border-line bg-panel/70 px-4 py-2 text-xs text-slate-400 sm:grid">
               <div>帳戶</div>
               <div className="text-right">台幣</div>

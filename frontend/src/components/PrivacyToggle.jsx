@@ -9,7 +9,7 @@ export default function PrivacyToggle() {
     <button
       type="button"
       onClick={toggleHideAmounts}
-      className="fixed bottom-24 right-3 z-50 grid h-11 w-11 place-items-center rounded-full border border-line bg-surface/95 text-slate-200 shadow-lg shadow-black/30 backdrop-blur transition hover:-translate-y-0.5 hover:border-sky-400/80 hover:bg-sky-500/15 hover:text-white active:scale-95 sm:bottom-6 sm:right-6"
+      className="ml-auto z-50 grid h-11 w-11 shrink-0 place-items-center rounded-full border border-line bg-surface/95 text-slate-200 shadow-lg shadow-black/30 backdrop-blur transition hover:-translate-y-0.5 hover:border-sky-400/80 hover:bg-sky-500/15 hover:text-white active:scale-95 sm:fixed sm:bottom-6 sm:right-6"
       title={hideAmounts ? '顯示金額' : '隱藏金額'}
       aria-label={hideAmounts ? '顯示金額' : '隱藏金額'}
     >

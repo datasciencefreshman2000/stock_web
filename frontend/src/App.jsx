@@ -71,10 +71,11 @@ function SiteLogo() {
         <div className="text-sm font-semibold text-white">蔡加恩的金庫</div>
         <div className="text-[11px] text-slate-500">stock vault</div>
       </div>
+      <PrivacyToggle />
       <button
         type="button"
         onClick={logout}
-        className="ml-auto rounded-md border border-slate-700 px-2.5 py-1 text-[11px] text-slate-400 transition hover:border-slate-500 hover:text-slate-200"
+        className="rounded-md border border-slate-700 px-2.5 py-1 text-[11px] text-slate-400 transition hover:border-slate-500 hover:text-slate-200 sm:ml-auto"
       >
         登出
       </button>
@@ -98,11 +99,10 @@ function AuthedApp() {
       <BrowserRouter>
         <div className="min-h-screen overflow-x-hidden bg-[#0b1020] text-slate-100">
           <SiteLogo />
-          <main className="mx-auto w-full max-w-6xl px-3 pb-28 pt-4 sm:px-4 sm:pb-24 sm:pt-5">
+          <main className="app-content mx-auto w-full max-w-6xl px-3 pb-28 pt-4 sm:px-4 sm:pb-24 sm:pt-5">
             <SaveStatus />
             <AnimatedRoutes />
           </main>
-          <PrivacyToggle />
           <NavBar />
         </div>
       </BrowserRouter>

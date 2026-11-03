@@ -12,6 +12,7 @@ import { ErrorBlock, LoadingBlock } from '../components/StateBlock'
 import SummaryCard from '../components/SummaryCard'
 import { maskAmount, usePrivacy } from '../context/PrivacyContext'
 import { useRefreshAll, useSummaryQuery } from '../hooks/queries'
+import { useMediaQuery } from '../hooks/useMediaQuery'
 import {
   investmentCashTwd,
   investmentCostTwd,
@@ -23,6 +24,7 @@ import { money, percent, pnlClass } from '../utils/format'
 import { formatStamp, freshnessClass, freshnessLabel } from '../utils/freshness'
 
 export default function Dashboard() {
+  const desktopCharts = useMediaQuery('(min-width: 1024px)')
   const [selectedInvestmentGroup, setSelectedInvestmentGroup] = useState(null)
   const [summaryExpanded, setSummaryExpanded] = useState(true)
   const { hideAmounts } = usePrivacy()
@@ -206,7 +208,7 @@ export default function Dashboard() {
       {data.valuation_complete !== false && investmentCashTotal >= 0 && ownCashTotal >= 0 ? <section>
         <Suspense fallback={<div className="h-64 animate-pulse rounded-md border border-line bg-panel/40" />}>
         {/* 手機 carousel */}
-        <div className="scrollbar-hide flex snap-x snap-mandatory gap-3 overflow-x-auto pb-3 lg:hidden">
+        {!desktopCharts ? <><div className="scrollbar-hide flex snap-x snap-mandatory gap-3 overflow-x-auto pb-3 lg:hidden">
           {pieCharts.map((chart) => (
             <div key={chart.key} className="w-full flex-none snap-start">
               <AssetPieChart
@@ -221,9 +223,8 @@ export default function Dashboard() {
           {/* 尾端佔位 = container 寬 - 卡片寬 = 2rem，讓最後一張也能 snap 到左側 */}
           <div className="w-8 flex-none" aria-hidden="true" />
         </div>
-        <p className="mb-1 text-center text-xs text-slate-600 lg:hidden">← 左右滑動查看圖表 →</p>
+        <p className="mb-1 text-center text-xs text-slate-600 lg:hidden">← 左右滑動查看圖表 →</p></> : (
 
-        {/* 桌機 grid */}
         <div className="hidden gap-5 lg:grid lg:grid-cols-3">
           {pieCharts.map((chart) => (
             <AssetPieChart
@@ -234,7 +235,7 @@ export default function Dashboard() {
               headerAction={chart.headerAction}
             />
           ))}
-        </div>
+        </div>)}
         </Suspense>
       </section> : null}
 

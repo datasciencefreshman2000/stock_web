@@ -2,7 +2,7 @@ import { QueryClient } from '@tanstack/react-query'
 
 /**
  * 後端的資料本來就是快取（由排程更新），前端沒必要一直重打。
- * staleTime 設 5 分鐘，切頁時直接用記憶體裡的資料，畫面瞬間出現。
+ * staleTime 設 1 分鐘，短時間切頁直接使用記憶體裡的資料。
  */
 export const queryClient = new QueryClient({
   defaultOptions: {

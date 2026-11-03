@@ -248,6 +248,9 @@ export default function TradeForm({ onSubmit, submitting }) {
           代號
           <input
             ref={tickerRef}
+            autoCapitalize="characters"
+            autoCorrect="off"
+            spellCheck={false}
             className="rounded-md border border-line bg-[#0b1020] px-3 py-2"
             value={form.ticker}
             list="ticker-suggestions"
@@ -274,8 +277,8 @@ export default function TradeForm({ onSubmit, submitting }) {
         </label>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3 sm:gap-4">
-        <div className="grid gap-2 text-sm">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
+        <div className="col-span-2 grid gap-2 text-sm sm:col-span-1">
           <span className="flex items-center gap-2">
             買賣
             <span className="hidden text-[10px] text-slate-600 sm:inline">↑ ↓ 切換</span>

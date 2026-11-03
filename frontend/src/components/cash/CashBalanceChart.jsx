@@ -88,7 +88,7 @@ export default function CashBalanceChart({ data }) {
               />
               <ReferenceLine x={0} stroke="#94a3b8" strokeWidth={1.5} />
               <Tooltip cursor={{ fill: 'rgba(148, 163, 184, 0.06)' }} content={<CashTooltip hidden={hideAmounts} />} />
-              <Bar dataKey="value" radius={4} maxBarSize={22}>
+              <Bar dataKey="value" radius={4} maxBarSize={22} isAnimationActive={false}>
                 {rows.map((item) => (
                   <Cell
                     key={item.name}

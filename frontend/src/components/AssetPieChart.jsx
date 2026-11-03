@@ -50,6 +50,7 @@ export default function AssetPieChart({ data, title = '資產分布', onItemClic
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
+              isAnimationActive={false}
               data={rows}
               dataKey="value"
               nameKey="name"

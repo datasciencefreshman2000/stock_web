@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { isEdgeStart, swipeIntent, THRESHOLD_PX, HORIZONTAL_RATIO } from '../utils/swipeIntent'
 
 /**
  * 手機左右滑動換頁。
@@ -23,8 +24,6 @@ import { useEffect, useRef } from 'react'
  *   - 有 modal 打開時
  */
 
-const THRESHOLD_PX = 60          // 位移要夠大，避免點擊時的微小抖動誤判
-const HORIZONTAL_RATIO = 1.5     // 水平要明顯大於垂直，避免和上下捲動打架
 
 function isHorizontallyScrollable(element) {
   if (!(element instanceof Element)) return false
@@ -36,7 +35,7 @@ function isHorizontallyScrollable(element) {
 function shouldIgnore(target) {
   if (document.querySelector('[role="dialog"][aria-modal="true"]')) return true
   if (!(target instanceof Element)) return false
-  if (target.closest('input, textarea, select, [role="slider"], [data-swipe-nav="off"]')) return true
+  if (target.closest('form, button, a, label, input, textarea, select, [contenteditable="true"], [role="slider"], [data-swipe-nav="off"]')) return true
 
   // 往上找有沒有「還能左右捲」的祖先。持倉表格和總覽的圖表輪播都是這種。
   for (let node = target; node; node = node.parentElement) {
@@ -59,18 +58,25 @@ export function useSwipeNavigation(onSwipe, enabled = true) {
         return
       }
       const touch = event.touches[0]
+      if (isEdgeStart(touch.clientX, window.innerWidth)) {
+        gestureRef.current = null
+        return
+      }
       gestureRef.current = { x: touch.clientX, y: touch.clientY, done: false }
     }
 
     function onTouchMove(event) {
       const gesture = gestureRef.current
       // 多指 = 縮放，直接放棄這次手勢
-      if (!gesture || gesture.done || event.touches.length !== 1) return
+      if (event.touches.length !== 1) { gestureRef.current = null; return }
+      if (!gesture || gesture.done) return
 
       const touch = event.touches[0]
       const dx = touch.clientX - gesture.x
       const dy = touch.clientY - gesture.y
-      if (Math.abs(dx) < THRESHOLD_PX || Math.abs(dx) < Math.abs(dy) * HORIZONTAL_RATIO) return
+      const intent = swipeIntent(dx, dy)
+      if (intent === 'scroll') { gestureRef.current = null; return }
+      if (intent !== 'navigate') return
 
       gesture.done = true
       // 這行只有在 passive: false 下才有效，作用是不讓瀏覽器
@@ -84,7 +90,7 @@ export function useSwipeNavigation(onSwipe, enabled = true) {
     }
 
     const options = { passive: false }
-    window.addEventListener('touchstart', onTouchStart, options)
+    window.addEventListener('touchstart', onTouchStart, { passive: true })
     window.addEventListener('touchmove', onTouchMove, options)
     window.addEventListener('touchend', onTouchEnd)
     window.addEventListener('touchcancel', onTouchEnd)
